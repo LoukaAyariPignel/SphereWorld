@@ -96,6 +96,7 @@ World generation update.
 - New chunks are generated faster everywhere, not only for Voxy: the three layers are decorated with far less overhead, and the work that can run in parallel was moved out of the step Minecraft runs on a single thread
 - The planet is generated in square tiles, so chunks are no longer saved and reloaded while their neighbours are generated
 - No more forced memory collections during the generation for Voxy
+- Smoother flight at high speed: with a large render distance, the game no longer rewrites every section of the view each time the camera crosses a section, only the new ones (about 14 times less work)
 ```
 
 ## Gallery
