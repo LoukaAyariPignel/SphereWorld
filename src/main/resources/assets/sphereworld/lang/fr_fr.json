@@ -38,5 +38,12 @@
   "sphereworld.loading.stage.climate": "Températures et humidité",
   "sphereworld.loading.stage.biomes": "Biomes",
   "sphereworld.loading.stage.relief": "Relief et mers",
-  "sphereworld.loading.stage.surface": "Surface"
+  "sphereworld.loading.stage.surface": "Surface",
+  "key.category.sphereworld.planet": "SphereWorld",
+  "key.sphereworld.planet_map": "Carte de la planète",
+  "sphereworld.map.title": "Carte de la planète",
+  "sphereworld.map.position": "X %s  Y %s  Z %s",
+  "sphereworld.map.around": "%s blocs de tour · point d'apparition à %s blocs",
+  "sphereworld.map.hint": "Fais glisser pour tourner, molette pour zoomer, [%s] pour fermer",
+  "sphereworld.map.toast": "Appuie sur [%s] pour voir toute la planète"
 }

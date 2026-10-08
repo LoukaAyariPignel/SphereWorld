@@ -29,6 +29,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         if (scenarios.contains("clouds")) clouds(context);
         if (scenarios.contains("lodupdate")) lodUpdate(context);
         if (scenarios.contains("atlaspatch")) atlasPatch(context);
+        if (scenarios.contains("planetmap")) planetMap(context);
         if (scenarios.contains("savedworld")) {
             context.runOnClient(client -> client.options.renderDistance().set(Integer.getInteger("sphereworld.testRenderDistance", 12)));
             context.runOnClient(client -> client.createWorldOpenFlows().openWorld("SavedWorld", () -> {}));
@@ -714,6 +715,36 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
             world.getServer().runCommand("fill 200 260 260 360 260 420 red_wool");
             context.waitTicks(200);
             context.takeScreenshot("lod_after");
+        }
+    }
+
+    private static void planetMap(ClientGameTestContext context) {
+        context.runOnClient(client -> client.options.renderDistance().set(8));
+        try (TestSingleplayerContext world = context.worldBuilder()
+                .adjustSettings(SphereWorldClientTest::selectPlanet)
+                .create()) {
+            world.getServer().runCommand("gamemode spectator @a");
+            world.getServer().runCommand("time set noon");
+            world.getServer().runCommand("tp @a 300 150 -400");
+            context.waitTicks(60);
+            context.takeScreenshot("planet_map_hint");
+            context.waitTicks(140);
+            context.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_M);
+            context.waitTicks(5);
+            String screen = context.computeOnClient(client -> client.gui.screen() == null ? "none" : client.gui.screen().getClass().getSimpleName());
+            log("planet map: screen after M " + screen);
+            context.takeScreenshot("planet_map");
+            context.getInput().scroll(4);
+            context.waitTicks(3);
+            context.takeScreenshot("planet_map_zoom");
+            context.runOnClient(client -> client.gui.screen().mouseDragged(new net.minecraft.client.input.MouseButtonEvent(200, 100,
+                    new net.minecraft.client.input.MouseButtonInfo(0, 0)), 90, 30));
+            context.waitTicks(3);
+            context.takeScreenshot("planet_map_turned");
+            context.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_M);
+            context.waitTicks(5);
+            boolean closed = context.computeOnClient(client -> client.gui.screen() == null);
+            log((closed && screen.equals("PlanetMapScreen") ? "PASS" : "FAIL") + " planet map opens and closes with M");
         }
     }
 

@@ -10,7 +10,14 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 
 public final class SphereWorldClient implements ClientModInitializer {
     private static final boolean VOXY = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("voxy");
+    private static final net.minecraft.client.KeyMapping PLANET_MAP = net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper.registerKeyMapping(
+            new net.minecraft.client.KeyMapping("key.sphereworld.planet_map",
+                    com.mojang.blaze3d.platform.InputConstants.KEY_M,
+                    net.minecraft.client.KeyMapping.Category.register(dev.sphereworld.SphereWorld.id("planet"))));
     private static @org.jspecify.annotations.Nullable Boolean sentDetail;
+    private static boolean mapHintShown;
+    private static final net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId MAP_HINT =
+            new net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId(8000L);
 
     @Override
     public void onInitializeClient() {
@@ -35,6 +42,14 @@ public final class SphereWorldClient implements ClientModInitializer {
         PlanetLodRenderer.init();
         dev.sphereworld.client.dev.SecondScreen.install();
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (PLANET_MAP.consumeClick()) dev.sphereworld.client.screen.PlanetMapScreen.open(client, PLANET_MAP);
+            if (!mapHintShown && client.level != null && client.gui.screen() == null
+                    && ClientAtlases.get(client.level.dimension().identifier()) != null) {
+                mapHintShown = true;
+                net.minecraft.client.gui.components.toasts.SystemToast.add(client.gui.toastManager(), MAP_HINT,
+                        net.minecraft.network.chat.Component.translatable("sphereworld.map.title"),
+                        net.minecraft.network.chat.Component.translatable("sphereworld.map.toast", PLANET_MAP.getTranslatedKeyMessage()));
+            }
             if (client.level != null) {
                 dev.sphereworld.client.render.IrisLodSupport.tick(dev.sphereworld.planet.Planets.of(client.level));
                 dev.sphereworld.client.render.AtlasMeshes.applyChanges();

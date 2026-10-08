@@ -306,7 +306,7 @@ public final class PlanetLoadingView {
         manager.register(TEXTURE, texture);
     }
 
-    private static void paint(NativeImage image, int s, PlanetAtlas atlas, AtlasBuildProgress.@Nullable Live live,
+    public static void paint(NativeImage image, int s, PlanetAtlas atlas, AtlasBuildProgress.@Nullable Live live,
                               double lon0, double lat0, double extent,
                               VoxyPregen.@Nullable Progress pregen, @Nullable BlockPos spawn) {
         int circumference = atlas.circumference();

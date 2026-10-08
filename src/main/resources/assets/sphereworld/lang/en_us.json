@@ -38,5 +38,12 @@
   "sphereworld.loading.stage.climate": "Temperature and humidity",
   "sphereworld.loading.stage.biomes": "Biomes",
   "sphereworld.loading.stage.relief": "Relief and seas",
-  "sphereworld.loading.stage.surface": "Surface"
+  "sphereworld.loading.stage.surface": "Surface",
+  "key.category.sphereworld.planet": "SphereWorld",
+  "key.sphereworld.planet_map": "Planet map",
+  "sphereworld.map.title": "Planet map",
+  "sphereworld.map.position": "X %s  Y %s  Z %s",
+  "sphereworld.map.around": "%s blocks around · spawn %s blocks away",
+  "sphereworld.map.hint": "Drag to turn, scroll to zoom, [%s] to close",
+  "sphereworld.map.toast": "Press [%s] to see the whole planet"
 }
