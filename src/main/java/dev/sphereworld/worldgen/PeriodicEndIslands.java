@@ -2,6 +2,7 @@ package dev.sphereworld.worldgen;
 
 import com.mojang.serialization.MapCodec;
 import dev.sphereworld.planet.PlanetGeometry;
+import java.util.Arrays;
 import net.minecraft.util.Interval;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -18,7 +19,7 @@ record PeriodicEndIslands(PlanetGeometry geometry) implements DensityFunction {
     public DensitySampler compileSampler(CompileContext context) {
         RandomSource islandRandom = context.createEndIslandRandom();
         islandRandom.consumeCount(17292);
-        return new Sampler(new SimplexNoise(islandRandom, true), geometry);
+        return new Sampler(new SimplexNoise(islandRandom, true), geometry, ThreadLocal.withInitial(Memo::new));
     }
 
     @Override
@@ -41,7 +42,18 @@ record PeriodicEndIslands(PlanetGeometry geometry) implements DensityFunction {
         throw new UnsupportedOperationException("Runtime-only planet density wrapper");
     }
 
-    private record Sampler(SimplexNoise islandNoise, PlanetGeometry geometry) implements DensitySampler {
+    private static final class Memo {
+        private static final int SIZE = 256;
+        private final long[] keys = new long[SIZE];
+        private final float[] values = new float[SIZE];
+        private final long[] cellsZ = new long[25];
+
+        private Memo() {
+            Arrays.fill(keys, Long.MIN_VALUE);
+        }
+    }
+
+    private record Sampler(SimplexNoise islandNoise, PlanetGeometry geometry, ThreadLocal<Memo> memo) implements DensitySampler {
         @Override
         public void sampleVolume(SamplerContext context, DensityBuffer out, DensityVolume volume) {
             for (int z = 0; z < volume.sizeZ(); z++) {
@@ -55,21 +67,31 @@ record PeriodicEndIslands(PlanetGeometry geometry) implements DensityFunction {
 
         @Override
         public float sampleValue(SamplerContext context, int blockX, int blockY, int blockZ) {
-            return (heightValue(geometry.canonical(blockX), geometry.canonical(blockZ)) - 8.0F) / 128.0F;
+            return (heightValue(Math.floorDiv(geometry.canonical(blockX), 8), Math.floorDiv(geometry.canonical(blockZ), 8)) - 8.0F) / 128.0F;
         }
 
-        private float heightValue(int blockX, int blockZ) {
-            int sectionX = Math.floorDiv(blockX, 8);
-            int sectionZ = Math.floorDiv(blockZ, 8);
+        private float heightValue(int sectionX, int sectionZ) {
+            Memo memo = this.memo.get();
+            long key = (long) sectionX << 32 | sectionZ & 0xFFFFFFFFL;
+            int slot = (sectionX * 31 + sectionZ) & (Memo.SIZE - 1);
+            if (memo.keys[slot] == key) return memo.values[slot];
+            float value = computeHeight(sectionX, sectionZ, memo.cellsZ);
+            memo.keys[slot] = key;
+            memo.values[slot] = value;
+            return value;
+        }
+
+        private float computeHeight(int sectionX, int sectionZ, long[] cellsZ) {
             int chunkX = Math.floorDiv(sectionX, 2);
             int chunkZ = Math.floorDiv(sectionZ, 2);
             int subX = Math.floorMod(sectionX, 2);
             int subZ = Math.floorMod(sectionZ, 2);
+            for (int zo = -12; zo <= 12; zo++) cellsZ[zo + 12] = geometry.canonicalChunk(chunkZ + zo);
             float offset = -100.0F;
             for (int xo = -12; xo <= 12; xo++) {
+                long cellX = geometry.canonicalChunk(chunkX + xo);
                 for (int zo = -12; zo <= 12; zo++) {
-                    long cellX = geometry.canonicalChunk(chunkX + xo);
-                    long cellZ = geometry.canonicalChunk(chunkZ + zo);
+                    long cellZ = cellsZ[zo + 12];
                     if (cellX * cellX + cellZ * cellZ > 4096L && islandNoise.get(cellX, cellZ) < -0.9F) {
                         float islandSize = (Mth.abs((float) cellX) * 3439.0F + Mth.abs((float) cellZ) * 147.0F) % 13.0F + 9.0F;
                         float xd = subX - xo * 2;

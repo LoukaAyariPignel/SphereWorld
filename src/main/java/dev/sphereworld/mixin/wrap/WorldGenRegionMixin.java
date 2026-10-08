@@ -13,43 +13,43 @@ import net.minecraft.world.level.chunk.status.ChunkStep;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.sphereworld.wrap.PlanetWrap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import com.llamalad7.mixinextras.sugar.Local;
 
 @Mixin(WorldGenRegion.class)
 abstract class WorldGenRegionMixin {
     @Shadow @Final private ServerLevel level;
-    @Shadow @Final private ChunkAccess center;
-    @Shadow @Final private ChunkStep generatingStep;
     @Shadow @Final private int centerChunkX;
     @Shadow @Final private int centerChunkZ;
     @Shadow @Final private int writeRadius;
-    @Shadow @Final @Mutable private StaticCache2D<@Nullable ChunkAccess> cache;
 
     @Unique
     private static int sphereworld$distance(PlanetGeometry g, ChunkPos center, int x, int z) {
         return Math.max(Math.abs(g.chunkDelta(center.x(), x)), Math.abs(g.chunkDelta(center.z(), z)));
     }
 
-    @Inject(method = "<init>", at = @At("RETURN"))
-    private void sphereworld$periodicNeighbourhood(ServerLevel level, StaticCache2D<GenerationChunkHolder> holders,
-                                                    ChunkStep step, ChunkAccess center, CallbackInfo ci) {
+    @WrapOperation(method = "<init>", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/util/StaticCache2D;map(Lnet/minecraft/util/StaticCache2D$MappingFunction;)Lnet/minecraft/util/StaticCache2D;"))
+    private StaticCache2D<@Nullable ChunkAccess> sphereworld$periodicNeighbourhood(StaticCache2D<GenerationChunkHolder> holders,
+                                                                              StaticCache2D.MappingFunction<GenerationChunkHolder, @Nullable ChunkAccess> function,
+                                                                              Operation<StaticCache2D<@Nullable ChunkAccess>> original,
+                                                                              @Local(argsOnly = true) ServerLevel level,
+                                                                              @Local(argsOnly = true) ChunkStep step,
+                                                                              @Local(argsOnly = true) ChunkAccess center) {
         PlanetGeometry g = Planets.of(level);
-        if (g == null) return;
+        if (g == null) return original.call(holders, function);
         ChunkPos centerPos = center.getPos();
-        cache = holders.map((holder, x, z) -> {
+        return holders.map((holder, x, z) -> {
             int distance = sphereworld$distance(g, centerPos, x, z);
             ChunkStatus allowed = distance >= step.directDependencies().size() ? null : step.directDependencies().get(distance);
             return allowed == null ? null : holder.getChunkIfPresentUnchecked(allowed);
@@ -63,13 +63,12 @@ abstract class WorldGenRegionMixin {
         return g == null ? centerPos.getChessboardDistance(x, z) : sphereworld$distance(g, centerPos, x, z);
     }
 
-    @Inject(method = "isWithinWriteZone(II)Z", at = @At("HEAD"), cancellable = true)
-    private void sphereworld$periodicWriteZone(int chunkX, int chunkZ, CallbackInfoReturnable<Boolean> cir) {
+    @ModifyReturnValue(method = "isWithinWriteZone(II)Z", at = @At("RETURN"))
+    private boolean sphereworld$periodicWriteZone(boolean original, @Local(argsOnly = true, ordinal = 0) int chunkX,
+                                                  @Local(argsOnly = true, ordinal = 1) int chunkZ) {
         PlanetGeometry g = Planets.of(level);
-        if (g != null) {
-            cir.setReturnValue(Math.abs(g.chunkDelta(centerChunkX, chunkX)) <= writeRadius
-                    && Math.abs(g.chunkDelta(centerChunkZ, chunkZ)) <= writeRadius);
-        }
+        if (g == null || original) return original;
+        return Math.abs(g.chunkDelta(centerChunkX, chunkX)) <= writeRadius && Math.abs(g.chunkDelta(centerChunkZ, chunkZ)) <= writeRadius;
     }
 
     @ModifyVariable(method = "getBlockEntity", at = @At("HEAD"), argsOnly = true)

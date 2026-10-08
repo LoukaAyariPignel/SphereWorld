@@ -50,6 +50,10 @@ public record StackBand(String name, int nativeMinY, int nativeHeight, int offse
         return LevelHeightAccessor.create(nativeMinY, nativeHeight);
     }
 
+    public int slot() {
+        return equals(NETHER) ? 0 : equals(OVERWORLD) ? 1 : 2;
+    }
+
     public int firstWorldSectionIndex() {
         return (worldMinY() - WORLD_MIN_Y) >> 4;
     }

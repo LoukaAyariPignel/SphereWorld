@@ -11,6 +11,8 @@ import dev.sphereworld.worldgen.ClimateWindow;
 import dev.sphereworld.worldgen.PlanetChunkGenerator;
 import dev.sphereworld.worldgen.PlanetRandomState;
 import it.unimi.dsi.fastutil.shorts.ShortList;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.QuartPos;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
@@ -33,6 +36,7 @@ import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -198,6 +202,23 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
         return nearest;
     }
 
+    private static final VarHandle VIEWS = MethodHandles.arrayElementVarHandle(ProtoChunk[].class);
+
+    @Nullable ProtoChunk sharedView(ChunkAccess chunk, StackBand band) {
+        if (chunk.getClass() != ProtoChunk.class) return null;
+        ProtoChunk[] views = ((BandViews) chunk).sphereworld$bandViews();
+        int slot = band.slot();
+        ProtoChunk view = (ProtoChunk) VIEWS.getAcquire(views, slot);
+        if (view == null) {
+            ProtoChunk created = view(chunk, band);
+            view = (ProtoChunk) VIEWS.compareAndExchangeRelease(views, slot, (ProtoChunk) null, created);
+            if (view == null) view = created;
+        }
+        ChunkStatus status = chunk.getPersistedStatus();
+        if (view.getPersistedStatus() != status) view.setPersistedStatus(status);
+        return view;
+    }
+
     ProtoChunk view(ChunkAccess chunk, StackBand band) {
         LevelChunkSection[] all = chunk.getSections();
         int first = band.firstWorldSectionIndex();
@@ -233,9 +254,10 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
         CompletableFuture<ChunkAccess> future = CompletableFuture.completedFuture(chunk);
         for (BandContext band : bands()) {
             future = future.thenCompose(ignored -> {
-                ProtoChunk view = view(chunk, band.band());
                 StackBand stackBand = band.band();
-                BiomeManager bandBiomes = biomeManager.withDifferentSource((qx, qy, qz) -> biomeManager.getNoiseBiomeAtQuart(qx, stackBand.worldQuart(qy), qz));
+                ProtoChunk shared = sharedView(chunk, stackBand);
+                ProtoChunk view = shared != null ? shared : view(chunk, stackBand);
+                BiomeManager bandBiomes = biomeManager.withDifferentSource(bandBiomes(chunk, biomeManager, stackBand));
                 StructureManager bandStructures = BandStructures.manager(structureManager, band);
                 Set<Holder<Biome>> bandPossible = band.generator().getBiomeSource().possibleBiomes();
 
@@ -243,12 +265,22 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
                         ? super.buildTerrain(view, blender, randomState, bandStructures, bandBiomes, null, bandPossible)
                         : band.generator().buildTerrain(view, Blender.empty(), band.randomState(), bandStructures, bandBiomes, null, bandPossible);
                 return built.thenApply(done -> {
-                    copyPostProcessing(view, chunk, band.band());
+                    copyPostProcessing(view, chunk, stackBand);
+                    if (shared != null) Heightmap.primeHeightmaps(view, ChunkStatus.FINAL_HEIGHTMAPS);
                     return chunk;
                 });
             });
         }
         return future.thenApply(built -> blendOverworldIntoNether(openBetweenBands(built), randomState));
+    }
+
+    private static BiomeResolver bandBiomes(ChunkAccess chunk, BiomeManager biomes, StackBand band) {
+        ChunkPos pos = chunk.getPos();
+        return (qx, qy, qz) -> {
+            int y = band.worldQuart(qy);
+            if (QuartPos.toSection(qx) == pos.x() && QuartPos.toSection(qz) == pos.z()) return chunk.getNoiseBiome(qx, y, qz);
+            return biomes.getNoiseBiomeAtQuart(qx, y, qz);
+        };
     }
 
     private static ChunkAccess openBetweenBands(ChunkAccess chunk) {
@@ -312,7 +344,7 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structureManager) {
         for (BandContext band : bands()) {
-            BandLevel bandLevel = BandLevel.of(level, this, band.band());
+            BandAccess bandLevel = BandAccess.of(level, this, band.band());
             ChunkAccess view = bandLevel.view(chunk);
             StructureManager bandStructures = BandStructures.manager(structureManager, band);
             if (band.generator() == this) {
@@ -327,7 +359,7 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
     public void spawnOriginalMobs(WorldGenRegion region) {
         for (BandContext band : bands()) {
             if (band.generator().generatorSettings().value().disableMobGeneration()) continue;
-            BandLevel bandLevel = BandLevel.of(region, this, band.band());
+            BandAccess bandLevel = BandAccess.of(region, this, band.band());
             ChunkPos pos = region.getCenter();
 
             BlockPos source = pos.getWorldPosition().atY(band.band().worldMaxY());

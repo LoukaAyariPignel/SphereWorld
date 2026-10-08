@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.ticks.LevelTickAccess;
 import net.minecraft.world.ticks.ScheduledTick;
 
-final class BandLevel implements InvocationHandler {
+final class BandLevel implements InvocationHandler, BandAccess {
     private static final EnumSet<Heightmap.Types> HEIGHTMAPS = EnumSet.allOf(Heightmap.Types.class);
     private static final Map<Class<?>, Map<Method, Boolean>> OVERRIDES = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -42,11 +42,13 @@ final class BandLevel implements InvocationHandler {
         return new BandLevel(real, generator, band);
     }
 
-    WorldGenLevel level() {
+    @Override
+    public WorldGenLevel level() {
         return proxy;
     }
 
-    synchronized ProtoChunk view(ChunkAccess chunk) {
+    @Override
+    public synchronized ProtoChunk view(ChunkAccess chunk) {
         return views.computeIfAbsent(chunk.getPos().pack(), key -> {
             ProtoChunk view = generator.view(chunk, band);
             Heightmap.primeHeightmaps(view, HEIGHTMAPS);
