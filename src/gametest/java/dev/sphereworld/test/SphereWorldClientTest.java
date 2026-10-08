@@ -505,6 +505,10 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         }
         if (scenarios.contains("flyfast")) flyFast(context, System.getProperty("sphereworld.flyWorld", "FlyWorld"));
         if (scenarios.contains("rotating")) rotatingStorage();
+        if (scenarios.contains("nethercaves")) {
+            netherCaves(context, false);
+            netherCaves(context, true);
+        }
         if (scenarios.contains("dragon")) {
             context.runOnClient(client -> client.options.renderDistance().set(10));
             try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
@@ -723,7 +727,9 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
 
     private static void genStats(ClientGameTestContext context) {
         String label = System.getProperty("sphereworld.genLabel", "run");
-        try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
+        boolean caves = Boolean.getBoolean("sphereworld.genCaves");
+        try (TestSingleplayerContext world = context.worldBuilder()
+                .adjustSettings(caves ? SphereWorldClientTest::selectPlanetWithNetherCaves : SphereWorldClientTest::selectPlanet).create()) {
             String result = world.getServer().computeOnServer(server -> {
                 var level = server.overworld();
                 int[][] areas = {{-8, -8, 16}, {64, 64, 12}, {120, -6, 8}, {-128, -6, 8}};
@@ -934,7 +940,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
             var planets = new java.util.LinkedHashMap<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>, Integer>();
             planets.put(net.minecraft.world.level.Level.OVERWORLD, 8192);
             var config = dev.sphereworld.planet.PlanetLayout.derive(new dev.sphereworld.planet.PlanetConfig(planets,
-                    java.util.List.of(net.minecraft.world.level.Level.NETHER, net.minecraft.world.level.Level.OVERWORLD, net.minecraft.world.level.Level.END), true));
+                    java.util.List.of(net.minecraft.world.level.Level.NETHER, net.minecraft.world.level.Level.OVERWORLD, net.minecraft.world.level.Level.END), true, false));
             var map = new java.util.LinkedHashMap<>(dimensions.dimensions());
             map.put(net.minecraft.world.level.dimension.LevelStem.OVERWORLD, new net.minecraft.world.level.dimension.LevelStem(stem.type(),
                     new dev.sphereworld.worldgen.PlanetChunkGenerator(noise.getBiomeSource(), noise.generatorSettings(), config)));
@@ -1323,6 +1329,186 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         context.waitFor(client -> !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning && client.level == null, 2400);
         context.waitTicks(2);
         context.setScreen(net.minecraft.client.gui.screens.TitleScreen::new);
+    }
+
+    static void selectPlanetWithNetherCaves(WorldCreationUiState state) {
+        selectPlanet(state);
+        state.updateDimensions((registryAccess, dimensions) -> {
+            var stem = dimensions.dimensions().get(net.minecraft.world.level.dimension.LevelStem.OVERWORLD);
+            if (!(stem.generator() instanceof dev.sphereworld.worldgen.stacked.StackedChunkGenerator stacked)) {
+                throw new AssertionError("The planet world type is not stacked");
+            }
+            var current = stacked.planetConfig();
+            var config = new dev.sphereworld.planet.PlanetConfig(current.planets(), current.stack(), current.openBoundaries(), true);
+            var map = new java.util.LinkedHashMap<>(dimensions.dimensions());
+            map.put(net.minecraft.world.level.dimension.LevelStem.OVERWORLD,
+                    new net.minecraft.world.level.dimension.LevelStem(stem.type(), stacked.withConfig(config)));
+            return new net.minecraft.world.level.levelgen.WorldDimensions(map);
+        });
+    }
+
+    private static void netherCaves(ClientGameTestContext context, boolean enabled) {
+        String label = enabled ? "on" : "off";
+        context.runOnClient(client -> client.options.renderDistance().set(8));
+        try (TestSingleplayerContext world = context.worldBuilder()
+                .adjustSettings(enabled ? SphereWorldClientTest::selectPlanetWithNetherCaves : SphereWorldClientTest::selectPlanet).create()) {
+            int[] spot = world.getServer().computeOnServer(server -> {
+                var level = server.overworld();
+                int chunks = 12;
+                int x0 = -chunks * 8;
+                int z0 = -chunks * 8;
+                int size = chunks * 16;
+                int minY = -120;
+                int maxY = -30;
+                int height = maxY - minY + 1;
+                var columns = new net.minecraft.world.level.chunk.LevelChunk[chunks * chunks];
+                for (int cx = 0; cx < chunks; cx++) {
+                    for (int cz = 0; cz < chunks; cz++) {
+                        columns[cx * chunks + cz] = level.getChunk((x0 >> 4) + cx, (z0 >> 4) + cz);
+                    }
+                }
+                var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+                java.util.function.IntPredicate open = index -> {
+                    int y = index % height;
+                    int rest = index / height;
+                    int z = rest % size;
+                    int x = rest / size;
+                    var chunk = columns[(x >> 4) * chunks + (z >> 4)];
+                    var state = chunk.getBlockState(pos.set(x0 + x, minY + y, z0 + z));
+                    return state.isAir();
+                };
+                java.util.BitSet seen = new java.util.BitSet(size * size * height);
+                int[] queue = new int[size * size * height];
+                int head = 0;
+                int tail = 0;
+                long transitionAir = 0;
+                for (int x = 0; x < size; x++) {
+                    for (int z = 0; z < size; z++) {
+                        for (int y = 0; y < height; y++) {
+                            int index = (x * size + z) * height + y;
+                            int worldY = minY + y;
+                            boolean air = open.test(index);
+                            if (air && worldY >= -73 && worldY <= -56) transitionAir++;
+                            if (air && worldY <= -110) {
+                                seen.set(index);
+                                queue[tail++] = index;
+                            }
+                        }
+                    }
+                }
+                long reachedOverworld = 0;
+                int bestColumn = -1;
+                int bestTop = Integer.MIN_VALUE;
+                while (head < tail) {
+                    int index = queue[head++];
+                    int y = index % height;
+                    int rest = index / height;
+                    int z = rest % size;
+                    int x = rest / size;
+                    if (minY + y >= -45) {
+                        reachedOverworld++;
+                        if (minY + y > bestTop) {
+                            bestTop = minY + y;
+                            bestColumn = x * size + z;
+                        }
+                    }
+                    int[][] steps = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+                    for (int[] step : steps) {
+                        int nx = x + step[0];
+                        int ny = y + step[1];
+                        int nz = z + step[2];
+                        if (nx < 0 || nx >= size || ny < 0 || ny >= height || nz < 0 || nz >= size) continue;
+                        int next = (nx * size + nz) * height + ny;
+                        if (seen.get(next) || !open.test(next)) continue;
+                        seen.set(next);
+                        queue[tail++] = next;
+                    }
+                }
+                log("nethercaves " + label + ": air in the rows between the Nether and the Overworld (y -73 to -56): " + transitionAir
+                        + ", Overworld cave blocks (y -45 and up) reached from the Nether through air: " + reachedOverworld);
+                if (bestColumn < 0) return null;
+                it.unimi.dsi.fastutil.ints.IntArrayList holes = new it.unimi.dsi.fastutil.ints.IntArrayList();
+                it.unimi.dsi.fastutil.ints.IntArrayList caverns = new it.unimi.dsi.fastutil.ints.IntArrayList();
+                it.unimi.dsi.fastutil.ints.IntArrayList caves = new it.unimi.dsi.fastutil.ints.IntArrayList();
+                for (int index = seen.nextSetBit(0); index >= 0; index = seen.nextSetBit(index + 1)) {
+                    int y = minY + index % height;
+                    if (y == -68) holes.add(index);
+                    else if (y <= -84 && y >= -92) caverns.add(index);
+                    else if (y >= -48 && y <= -40) caves.add(index);
+                }
+                java.util.List<int[]> views = new java.util.ArrayList<>();
+                for (int h = 0; h < holes.size() && views.size() < 3; h += Math.max(1, holes.size() / 7)) {
+                    int hole = holes.getInt(h);
+                    int hx = hole / height / size;
+                    int hz = hole / height % size;
+                    int cavern = nearest(caverns, hx, hz, size, height, 4, 14);
+                    int cave = nearest(caves, hx, hz, size, height, 0, 14);
+                    if (cavern < 0 || cave < 0) continue;
+                    views.add(new int[] {x0 + hx, -68, z0 + hz,
+                            x0 + cavern / height / size, minY + cavern % height, z0 + cavern / height % size,
+                            x0 + cave / height / size, minY + cave % height, z0 + cave / height % size});
+                }
+                int[] result = new int[views.size() * 9];
+                for (int i = 0; i < views.size(); i++) System.arraycopy(views.get(i), 0, result, i * 9, 9);
+                log("nethercaves " + label + ": " + holes.size() + " open cells in the old Nether roof, " + views.size() + " viewpoints");
+                return result;
+            });
+            if (enabled && spot == null) throw new AssertionError("No Overworld cave reaches the Nether with the option enabled");
+            if (!enabled && spot != null) throw new AssertionError("Overworld caves reach the Nether with the option disabled");
+            if (spot != null) {
+                log("PASS nethercaves: Overworld caves open into the Nether");
+                world.getServer().runCommand("gamemode spectator @a");
+                world.getServer().runCommand("effect give @a night_vision infinite 0 true");
+                for (int i = 0; i < spot.length / 9; i++) {
+                    String hole = (spot[i * 9] + 0.5) + " " + (spot[i * 9 + 1] + 0.5) + " " + (spot[i * 9 + 2] + 0.5);
+                    world.getServer().runCommand("tp @a " + (spot[i * 9 + 3] + 0.5) + " " + (spot[i * 9 + 4] - 1.1) + " " + (spot[i * 9 + 5] + 0.5) + " facing " + hole);
+                    context.waitTicks(i == 0 ? 200 : 100);
+                    context.takeScreenshot("nethercaves_" + i + "_from_nether");
+                    world.getServer().runCommand("tp @a " + (spot[i * 9 + 6] + 0.5) + " " + (spot[i * 9 + 7] - 1.1) + " " + (spot[i * 9 + 8] + 0.5) + " facing " + hole);
+                    context.waitTicks(60);
+                    context.takeScreenshot("nethercaves_" + i + "_from_overworld");
+                }
+            } else {
+                log("PASS nethercaves: with the option off, the Overworld and the Nether stay sealed");
+                world.getServer().runCommand("tp @a 0 120 0");
+                context.waitTicks(400);
+            }
+            String fluids = world.getServer().computeOnServer(server -> {
+                var level = server.overworld();
+                long water = 0;
+                long lava = 0;
+                var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+                for (int x = -96; x < 96; x++) {
+                    for (int z = -96; z < 96; z++) {
+                        for (int y = -100; y <= -66; y++) {
+                            var fluid = level.getFluidState(pos.set(x, y, z));
+                            if (fluid.isEmpty()) continue;
+                            if (fluid.is(net.minecraft.tags.FluidTags.WATER)) water++;
+                            else lava++;
+                        }
+                    }
+                }
+                return "water " + water + ", lava " + lava;
+            });
+            log("nethercaves " + label + ": fluids in the Nether's ceiling (y -100 to -66) after ticking: " + fluids);
+        }
+    }
+
+    private static int nearest(it.unimi.dsi.fastutil.ints.IntArrayList cells, int x, int z, int size, int height, int minDistance, int maxDistance) {
+        int best = -1;
+        int bestDistance = Integer.MAX_VALUE;
+        for (int i = 0; i < cells.size(); i++) {
+            int cell = cells.getInt(i);
+            int dx = cell / height / size - x;
+            int dz = cell / height % size - z;
+            int distance = dx * dx + dz * dz;
+            if (distance < minDistance * minDistance || distance > maxDistance * maxDistance) continue;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = cell;
+            }
+        }
+        return best;
     }
 
     static void selectPlanet(WorldCreationUiState state) {

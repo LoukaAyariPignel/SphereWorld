@@ -25,6 +25,7 @@ loom {
 				vmArg "-Dsphereworld.savedWorldNight=${project.findProperty('savedWorldNight') ?: 'false'}"
 				vmArg "-Dsphereworld.gallerySuffix=${project.findProperty('gallerySuffix') ?: ''}"
 				vmArg "-Dsphereworld.genLabel=${project.findProperty('genLabel') ?: 'run'}"
+				vmArg "-Dsphereworld.genCaves=${project.findProperty('genCaves') ?: 'false'}"
 				if (project.hasProperty('jfr')) vmArg "-XX:StartFlightRecording=filename=${project.property('jfr')},settings=profile,dumponexit=true"
 				if (project.hasProperty('xmx')) vmArg "-Xmx${project.property('xmx')}"
 				if (project.hasProperty('jvmExtra')) project.property('jvmExtra').toString().split(' ').each { vmArg it }
