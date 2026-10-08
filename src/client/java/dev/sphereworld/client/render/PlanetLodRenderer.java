@@ -203,7 +203,7 @@ public final class PlanetLodRenderer {
                 double cz = -half + row * cell + cell;
                 double dx = geometry.delta(origin.x, cx);
                 double dz = geometry.delta(origin.z, cz);
-                if (dx * dx + dz * dz < hole * hole) continue;
+                if (dx * dx + dz * dz < hole * hole && Math.abs(AtlasMeshes.height(heights, n, sea, row, col) - origin.y) < hole) continue;
                 float x = (float) (dx - cell * 0.5);
                 float z = (float) (dz - cell * 0.5);
                 builder.addVertex(x, (float) (AtlasMeshes.height(heights, n, sea, row, col) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);
