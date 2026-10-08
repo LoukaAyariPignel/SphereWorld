@@ -505,6 +505,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         }
         if (scenarios.contains("flyfast")) flyFast(context, System.getProperty("sphereworld.flyWorld", "FlyWorld"));
         if (scenarios.contains("rotating")) rotatingStorage();
+        if (scenarios.contains("netherwater")) netherWater(context);
         if (scenarios.contains("nethercaves")) {
             netherCaves(context, false);
             netherCaves(context, true);
@@ -1329,6 +1330,37 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         context.waitFor(client -> !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning && client.level == null, 2400);
         context.waitTicks(2);
         context.setScreen(net.minecraft.client.gui.screens.TitleScreen::new);
+    }
+
+    private static void netherWater(ClientGameTestContext context) {
+        context.runOnClient(client -> client.options.renderDistance().set(6));
+        try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
+            var server = world.getServer();
+            server.runCommand("gamemode spectator @a");
+            server.runCommand("tp @a 4 -50 8");
+            context.waitTicks(100);
+            server.runCommand("fill 0 -80 0 8 -55 2 stone");
+            server.runCommand("fill 1 -79 1 1 -56 1 air");
+            server.runCommand("fill 7 -79 1 7 -56 1 air");
+            server.runCommand("setblock 1 -56 1 water");
+            server.runCommand("setblock 7 -56 1 lava");
+            context.waitTicks(600);
+            String column = server.computeOnServer(s -> {
+                var level = s.overworld();
+                StringBuilder water = new StringBuilder();
+                StringBuilder lava = new StringBuilder();
+                for (int y = -56; y >= -79; y--) {
+                    water.append(level.getFluidState(new net.minecraft.core.BlockPos(1, y, 1)).is(net.minecraft.tags.FluidTags.WATER) ? 'W' : '.');
+                    lava.append(level.getFluidState(new net.minecraft.core.BlockPos(7, y, 1)).is(net.minecraft.tags.FluidTags.LAVA) ? 'L' : '.');
+                }
+                return water + " " + lava;
+            });
+            log("netherwater: from y -56 down to -79, water " + column.split(" ")[0] + ", lava " + column.split(" ")[1]);
+            String expectedWater = "W".repeat(9) + ".".repeat(15);
+            if (!column.split(" ")[0].equals(expectedWater)) throw new AssertionError("Water did not stop at the top of the Nether layer: " + column);
+            if (!column.split(" ")[1].equals("L".repeat(24))) throw new AssertionError("Lava did not flow down into the Nether layer: " + column);
+            log("PASS water stops at the top of the Nether layer, lava keeps flowing");
+        }
     }
 
     static void selectPlanetWithNetherCaves(WorldCreationUiState state) {
