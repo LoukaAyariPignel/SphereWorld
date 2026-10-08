@@ -14,6 +14,8 @@
   "sphereworld.customize.layer.nether": "Le Nether",
   "sphereworld.customize.layer.range": "y %s à %s",
   "sphereworld.customize.layers.hint": "Creuse pour descendre dans le Nether, construis pour monter dans l'End",
+  "sphereworld.customize.caves": "Grottes jusqu'au Nether",
+  "sphereworld.customize.caves.tooltip": "Les grottes de l'Overworld continuent sous le fond de l'Overworld et débouchent dans le plafond du Nether. Seule la forme des grottes change : les minerais et les structures sont générés de la même façon.",
   "sphereworld.customize.hours": "%s h",
   "sphereworld.customize.days": "%s jours",
   "sphereworld.customize.reset": "Défaut",

@@ -15,6 +15,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,11 +50,13 @@ import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.structure.StructureCheck;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
@@ -92,6 +95,7 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
     private final NoiseBasedChunkGenerator endGenerator;
     private volatile @Nullable List<BandContext> bands;
     private volatile @Nullable PalettedContainerFactory containerFactory;
+    private volatile @Nullable DensityFunction netherCaves;
 
     public StackedChunkGenerator(BiomeSource biomeSource, Holder<NoiseGeneratorSettings> settings, PlanetConfig planetConfig,
                                  Layer nether, Layer end) {
@@ -148,6 +152,12 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
             list.add(new BandContext(band, generator, randomState, state, structures, locateManager));
         }
         bands = List.copyOf(list);
+        try {
+            netherCaves = NetherCaves.shape(registries);
+        } catch (RuntimeException e) {
+            netherCaves = null;
+            SphereWorld.LOGGER.warn("Overworld caves cannot reach the Nether: the cave shape could not be read", e);
+        }
         SphereWorld.LOGGER.info("Stacked planet: Nether y {}..{}, Overworld y {}..{}, End y {}..{}",
                 StackBand.NETHER.worldMinY(), StackBand.NETHER.worldMaxY(), StackBand.OVERWORLD.worldMinY(),
                 StackBand.OVERWORLD.worldMaxY(), StackBand.END.worldMinY(), StackBand.END.worldMaxY());
@@ -203,6 +213,7 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
     }
 
     private static final VarHandle VIEWS = MethodHandles.arrayElementVarHandle(ProtoChunk[].class);
+    private static final EnumSet<Heightmap.Types> ALL_HEIGHTMAPS = EnumSet.allOf(Heightmap.Types.class);
 
     @Nullable ProtoChunk sharedView(ChunkAccess chunk, StackBand band) {
         if (chunk.getClass() != ProtoChunk.class) return null;
@@ -266,12 +277,25 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
                         : band.generator().buildTerrain(view, Blender.empty(), band.randomState(), bandStructures, bandBiomes, null, bandPossible);
                 return built.thenApply(done -> {
                     copyPostProcessing(view, chunk, stackBand);
-                    if (shared != null) Heightmap.primeHeightmaps(view, ChunkStatus.FINAL_HEIGHTMAPS);
                     return chunk;
                 });
             });
         }
-        return future.thenApply(built -> blendOverworldIntoNether(openBetweenBands(built), randomState));
+        return future.thenApply(built -> {
+            ChunkAccess done = blendOverworldIntoNether(openBetweenBands(built), randomState);
+            boolean carved = false;
+            DensityFunction caves = netherCaves;
+            BandContext overworld = band(StackBand.OVERWORLD);
+            if (caves != null && overworld != null && planetConfig().cavesToNether()) {
+                Beardifier beardifier = Beardifier.forStructuresInChunk(BandStructures.manager(structureManager, overworld), done.getPos());
+                carved = NetherCaves.carve(done, randomState, caves, beardifier) > 0;
+            }
+            for (BandContext band : bands()) {
+                ProtoChunk view = sharedView(done, band.band());
+                if (view != null) Heightmap.primeHeightmaps(view, carved && band.band() != StackBand.END ? ALL_HEIGHTMAPS : ChunkStatus.FINAL_HEIGHTMAPS);
+            }
+            return done;
+        });
     }
 
     private static BiomeResolver bandBiomes(ChunkAccess chunk, BiomeManager biomes, StackBand band) {
@@ -341,8 +365,20 @@ public final class StackedChunkGenerator extends PlanetChunkGenerator {
         }
     }
 
+    void setBlockInBand(ChunkAccess chunk, BlockPos pos, BlockState state) {
+        chunk.setBlockState(pos, state);
+        StackBand band = StackBand.at(pos.getY());
+        ProtoChunk view = sharedView(chunk, band);
+        if (view == null) return;
+        int nativeY = pos.getY() - band.offset();
+        for (Heightmap.Types type : ALL_HEIGHTMAPS) {
+            if (view.hasPrimedHeightmap(type)) view.getOrCreateHeightmapUnprimed(type).update(pos.getX() & 15, nativeY, pos.getZ() & 15, state);
+        }
+    }
+
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk, StructureManager structureManager) {
+        if (netherCaves != null && planetConfig().cavesToNether()) NetherCaves.seal(level, chunk, this);
         for (BandContext band : bands()) {
             BandAccess bandLevel = BandAccess.of(level, this, band.band());
             ChunkAccess view = bandLevel.view(chunk);

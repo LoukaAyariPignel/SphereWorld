@@ -49,15 +49,23 @@ public final class PlanetCustomizeScreen extends Screen {
 
     private final CreateWorldScreen parent;
     private final PlanetConfig config;
+    private final boolean stacked;
     private int size;
+    private boolean cavesToNether;
 
     public PlanetCustomizeScreen(CreateWorldScreen parent, WorldCreationContext context) {
         super(Component.translatable("sphereworld.customize.title"));
         this.parent = parent;
         this.config = context.selectedDimensions().overworld() instanceof PlanetChunkGenerator planet
                 ? planet.planetConfig() : PlanetConfig.defaults();
+        this.stacked = context.selectedDimensions().overworld() instanceof StackedChunkGenerator;
         Integer current = config.circumference(Level.OVERWORLD);
         this.size = current != null && PlanetLayout.OVERWORLD_SIZES.contains(current) ? current : DEFAULT_SIZE;
+        this.cavesToNether = config.cavesToNether();
+    }
+
+    private int panelTop() {
+        return 72 + 11 + (VOXY ? 11 : 0) + 20;
     }
 
     @Override
@@ -71,8 +79,17 @@ public final class PlanetCustomizeScreen extends Screen {
         sizeButton.setTooltip(Tooltip.create(Component.translatable("sphereworld.customize.size.tooltip")));
         addRenderableWidget(sizeButton);
 
+        if (stacked) {
+            CycleButton<Boolean> cavesButton = CycleButton.onOffBuilder(cavesToNether)
+                    .create(width / 2 - 110, panelTop() + LAYERS.size() * 20 + 22, 220, 20, Component.translatable("sphereworld.customize.caves"),
+                            (button, value) -> cavesToNether = value);
+            cavesButton.setTooltip(Tooltip.create(Component.translatable("sphereworld.customize.caves.tooltip")));
+            addRenderableWidget(cavesButton);
+        }
+
         addRenderableWidget(Button.builder(Component.translatable("sphereworld.customize.reset"), b -> {
             size = DEFAULT_SIZE;
+            cavesToNether = false;
             rebuildWidgets();
         }).bounds(width / 2 - 155, height - 28, 100, 20).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> apply())
@@ -84,7 +101,7 @@ public final class PlanetCustomizeScreen extends Screen {
     private PlanetConfig chosenConfig() {
         Map<ResourceKey<Level>, Integer> planets = new LinkedHashMap<>(config.planets());
         planets.put(Level.OVERWORLD, size);
-        return new PlanetConfig(planets, config.stack(), config.openBoundaries());
+        return new PlanetConfig(planets, config.stack(), config.openBoundaries(), stacked ? cavesToNether : config.cavesToNether());
     }
 
     private void apply() {
@@ -131,7 +148,7 @@ public final class PlanetCustomizeScreen extends Screen {
                     .withStyle(ChatFormatting.GRAY), centre, y, 0xFFFFFFFF);
         }
 
-        y += 20;
+        y = panelTop();
         int panelWidth = 220;
         int left = centre - panelWidth / 2;
         int rowHeight = 20;

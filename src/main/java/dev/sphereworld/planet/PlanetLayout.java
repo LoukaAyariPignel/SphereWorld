@@ -55,7 +55,7 @@ public final class PlanetLayout {
         if (Level.END.equals(config.above(Level.OVERWORLD))) {
             planets.put(Level.END, endCircumference(overworld));
         }
-        return new PlanetConfig(planets, stack, config.openBoundaries());
+        return new PlanetConfig(planets, stack, config.openBoundaries(), config.cavesToNether());
     }
 
     public static boolean isDerived(PlanetConfig config, ResourceKey<Level> dimension) {

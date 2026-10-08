@@ -12,7 +12,7 @@ import net.minecraft.world.level.Level;
 import org.jspecify.annotations.Nullable;
 
 public record PlanetConfig(Map<ResourceKey<Level>, Integer> planets, List<ResourceKey<Level>> stack,
-                           boolean openBoundaries) {
+                           boolean openBoundaries, boolean cavesToNether) {
     private static final Codec<ResourceKey<Level>> DIMENSION = ResourceKey.codec(Registries.DIMENSION);
     private static final Codec<Integer> CIRCUMFERENCE = Codec.INT.validate(value ->
             value >= PlanetGeometry.MIN_CIRCUMFERENCE && value <= PlanetGeometry.MAX_CIRCUMFERENCE && value % 32 == 0
@@ -23,7 +23,8 @@ public record PlanetConfig(Map<ResourceKey<Level>, Integer> planets, List<Resour
     public static final Codec<PlanetConfig> CODEC = RecordCodecBuilder.<PlanetConfig>create(i -> i.group(
                     Codec.unboundedMap(DIMENSION, CIRCUMFERENCE).fieldOf("planets").forGetter(PlanetConfig::planets),
                     DIMENSION.listOf().optionalFieldOf("stack", List.of()).forGetter(PlanetConfig::stack),
-                    Codec.BOOL.optionalFieldOf("open_boundaries", true).forGetter(PlanetConfig::openBoundaries))
+                    Codec.BOOL.optionalFieldOf("open_boundaries", true).forGetter(PlanetConfig::openBoundaries),
+                    Codec.BOOL.optionalFieldOf("caves_to_nether", false).forGetter(PlanetConfig::cavesToNether))
             .apply(i, PlanetConfig::new))
             .validate(config -> config.stack().stream().distinct().count() == config.stack().size()
                     ? DataResult.success(config)
@@ -39,7 +40,7 @@ public record PlanetConfig(Map<ResourceKey<Level>, Integer> planets, List<Resour
         planets.put(Level.OVERWORLD, 4096);
         planets.put(Level.NETHER, PlanetLayout.netherCircumference(4096));
         planets.put(Level.END, PlanetLayout.endCircumference(4096));
-        return new PlanetConfig(planets, List.of(Level.NETHER, Level.OVERWORLD, Level.END), true);
+        return new PlanetConfig(planets, List.of(Level.NETHER, Level.OVERWORLD, Level.END), true, false);
     }
 
     public @Nullable Integer circumference(ResourceKey<Level> dimension) {
