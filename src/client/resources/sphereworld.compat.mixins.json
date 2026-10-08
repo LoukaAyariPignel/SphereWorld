@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "package": "dev.sphereworld.client.mixin.compat",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "IrisFarMixin",
+    "IrisTransformPatcherMixin",
+    "VoxyDistanceTrackerMixin",
+    "VoxyIngestMixin",
+    "VoxyShaderLoaderMixin",
+    "SodiumGlobalUniformsMixin"
+  ],
+  "injectors": { "defaultRequire": 0 }
+}

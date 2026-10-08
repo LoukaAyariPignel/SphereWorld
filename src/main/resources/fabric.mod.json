@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "sphereworld",
+  "version": "${version}",
+  "name": "SphereWorld",
+  "description": "Turns the Overworld, the Nether and the End into finite spherical planets: walk straight in any direction and you come back where you started.",
+  "authors": ["Louka"],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/sphereworld",
+    "sources": "https://github.com/LoukaAyariPignel/SphereWorld",
+    "issues": "https://github.com/LoukaAyariPignel/SphereWorld/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/sphereworld/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.sphereworld.SphereWorld"],
+    "client": ["dev.sphereworld.client.SphereWorldClient"]
+  },
+  "accessWidener": "sphereworld.accesswidener",
+  "mixins": [
+    "sphereworld.mixins.json",
+    {"config": "sphereworld.client.mixins.json", "environment": "client"},
+    {"config": "sphereworld.compat.mixins.json", "environment": "client"}
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

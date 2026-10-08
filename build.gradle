@@ -1,0 +1,110 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+loom {
+	accessWidenerPath = file('src/main/resources/sphereworld.accesswidener')
+	splitEnvironmentSourceSets()
+	runs {
+		configureEach {
+			if (name == 'clientGameTest') {
+				vmArg "-Dsphereworld.scenarios=${project.findProperty('scenarios') ?: 'ui,world'}"
+				vmArg "-Dsphereworld.dumpShaders=true"
+				vmArg "-Dsphereworld.testRenderDistance=${project.findProperty('testRenderDistance') ?: '12'}"
+				vmArg "-Dsphereworld.secondScreen=true"
+				vmArg "-Dsphereworld.packLod=${project.findProperty('packLod') ?: 'false'}"
+				vmArg "-Dsphereworld.voxyPregenRows=${project.findProperty('voxyPregenRows') ?: '2147483647'}"
+				vmArg "-Dsphereworld.lapStep=${project.findProperty('lapStep') ?: '128'}"
+				vmArg "-Dsphereworld.savedWorldNight=${project.findProperty('savedWorldNight') ?: 'false'}"
+				vmArg "-Dsphereworld.gallerySuffix=${project.findProperty('gallerySuffix') ?: ''}"
+				vmArg "-Dsphereworld.noShaderPatch=${project.findProperty('noShaderPatch') ?: 'false'}"
+			}
+		}
+		client {
+			runDir 'run/client'
+			vmArg "-Dsphereworld.secondScreen=true"
+			vmArg "-Dsphereworld.captureLoading=${project.findProperty('captureLoading') ?: 'false'}"
+			vmArg "-Dsphereworld.rebuildAtlas=${project.findProperty('rebuildAtlas') ?: 'false'}"
+		}
+		devServer {
+			server()
+			name 'SphereWorld dev server'
+			runDir 'run/server'
+			vmArg "-Dsphereworld.devCommands=${project.findProperty('devCommands') ?: ''}"
+			vmArg "-Dsphereworld.devScript=${project.findProperty('devScript') ?: ''}"
+			vmArg "-Dsphereworld.devStop=${project.findProperty('devStop') ?: 'false'}"
+		}
+	}
+	mods {
+		"sphereworld" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'sphereworld-gametest'
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+		clearRunDirectory = false
+		username = 'Tester'
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	if (project.hasProperty('withSodium')) {
+		runtimeOnly files(project.property('withSodium'))
+	}
+	if (project.hasProperty('withModsDir')) {
+		runtimeOnly fileTree(project.property('withModsDir')) {
+			include '*.jar'
+			exclude 'fabric-api-*', 'sphereworld-*'
+		}
+	}
+}
+
+processResources {
+	inputs.property 'version', project.version
+	inputs.property 'minecraft_version', project.minecraft_version
+	filesMatching('fabric.mod.json') {
+		expand version: project.version, minecraft_version: project.minecraft_version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release = 25
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	inputs.property 'archivesName', project.base.archivesName
+	from('LICENSE') {
+		rename { "${it}_${inputs.properties.archivesName}" }
+	}
+}
+
+sourceSets.named('gametest') {
+	compileClasspath += sourceSets.client.compileClasspath + sourceSets.client.output
+	runtimeClasspath += sourceSets.client.output
+}

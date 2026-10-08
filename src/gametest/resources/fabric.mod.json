@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "sphereworld-gametest",
+  "version": "1.0.0",
+  "name": "SphereWorld client tests",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["dev.sphereworld.test.SphereWorldClientTest"]
+  },
+  "depends": { "sphereworld": "*" }
+}
