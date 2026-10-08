@@ -27,7 +27,7 @@ void main() {
     vec3 pos = vec3(rel.x + UV0.x, Position.y - camera.y, rel.y + UV0.y);
     planetXZ = Position.xz + UV0;
 
-    flatDistance = length(pos);
+    flatDistance = fract(SphereWorldPlanet.z) > 0.25 ? length(pos.xz) : length(pos);
     vec3 curved = sphereworld_curve(pos, ProjMat);
     viewDistance = length(curved);
     gl_Position = ProjMat * ModelViewMat * vec4(curved, 1.0);

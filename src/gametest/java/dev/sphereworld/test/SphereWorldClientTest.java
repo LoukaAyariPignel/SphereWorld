@@ -482,6 +482,21 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
             }
             System.clearProperty("sphereworld.captureLoading");
         }
+        if (scenarios.contains("endviews")) {
+            context.runOnClient(client -> client.options.renderDistance().set(8));
+            try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
+                world.getServer().runCommand("gamemode spectator @a");
+                world.getServer().runCommand("time set noon");
+                world.getServer().runCommand("gamerule advance_time false");
+                world.getServer().runCommand("tp @a 300 425 300 0 40");
+                context.waitTicks(400);
+                context.takeScreenshot("endviews_over_overworld");
+                world.getServer().runCommand("tp @a -80 417 -16 -60 8");
+                context.waitTicks(300);
+                world.getServer().runCommand("execute if entity @e[type=ender_dragon] run say dragon alive");
+                context.takeScreenshot("endviews_dragon_fog");
+            }
+        }
         if (scenarios.contains("dragon")) {
             context.runOnClient(client -> client.options.renderDistance().set(10));
             try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {

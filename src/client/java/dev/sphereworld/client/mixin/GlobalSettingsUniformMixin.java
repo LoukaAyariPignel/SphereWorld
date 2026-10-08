@@ -11,6 +11,8 @@ import org.spongepowered.asm.mixin.injection.At;
 
 @Mixin(GlobalSettingsUniform.class)
 abstract class GlobalSettingsUniformMixin {
+    private static final boolean SODIUM = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("sodium");
+
     @ModifyExpressionValue(method = "<clinit>", at = @At(value = "INVOKE",
             target = "Lcom/mojang/blaze3d/buffers/Std140SizeCalculator;get()I"))
     private static int sphereworld$growBlock(int size) {
@@ -24,7 +26,7 @@ abstract class GlobalSettingsUniformMixin {
         PlanetGeometry g = Planets.of(client.level);
         if (g == null) return builder.putVec4(1.0F, 0.0F, 0.0F, 0.0F);
 
-        float loaded = Math.max(16.0F, client.options.getEffectiveRenderDistance() * 16.0F);
+        float loaded = Math.max(16.0F, client.options.getEffectiveRenderDistance() * 16.0F) + (SODIUM ? 0.5F : 0.0F);
         return builder.putVec4((float) g.radius(), g.surfaceY(), loaded, g.circumference());
     }
 }

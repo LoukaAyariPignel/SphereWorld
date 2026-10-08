@@ -177,7 +177,7 @@ public final class PlanetLodRenderer {
                     double dx = geometry.delta(origin.x, cx);
                     double dz = geometry.delta(origin.z, cz);
                     double dy = AtlasMeshes.height(a, row, col) - origin.y;
-                    if (dx * dx + dy * dy + dz * dz < hole * hole) continue;
+                    if (dx * dx + dz * dz < hole * hole) continue;
                     float x = (float) (dx - cell * 0.5);
                     float z = (float) (dz - cell * 0.5);
                     builder.addVertex(x, (float) (AtlasMeshes.height(a, row, col) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);

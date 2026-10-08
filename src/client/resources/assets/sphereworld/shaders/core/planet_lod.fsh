@@ -13,7 +13,7 @@ layout(location = 3) in vec2 planetXZ;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    if (flatDistance < SphereWorldPlanet.z - 8.0) {
+    if (flatDistance < floor(SphereWorldPlanet.z) - 8.0) {
         discard;
     }
 
@@ -36,5 +36,8 @@ void main() {
     float haze = clamp(viewDistance / (SphereWorldPlanet.w * 0.45), 0.0, 1.0);
     haze = 0.15 + 0.55 * haze;
     vec3 color = mix(vertexColor.rgb, FogColor.rgb, haze * FogColor.a);
+    if (FogEnvironmentalEnd < 1000.0) {
+        color = mix(color, FogColor.rgb, linear_fog_value(viewDistance, FogEnvironmentalStart, FogEnvironmentalEnd) * FogColor.a);
+    }
     fragColor = vec4(color, 1.0);
 }
