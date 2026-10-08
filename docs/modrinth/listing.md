@@ -48,6 +48,33 @@ First public alpha.
 - Compatible with Sodium and Sodium Extra
 ```
 
+## Version 0.1.1
+
+| Field | Value |
+|---|---|
+| File | `build/libs/sphereworld-0.1.1+mc26.3.jar` (not the `-sources.jar`) |
+| Version number | `0.1.1+mc26.3` |
+| Version name | SphereWorld 0.1.1 |
+| Release channel | Alpha |
+| Loaders | Fabric |
+| Game versions | 26.3 |
+| Dependencies | Fabric API: required. Sodium, Iris, Voxy: optional. |
+
+### Changelog
+
+```markdown
+Performance and polish update.
+
+- Much lighter distant planet: the detail around you is only computed when it is drawn (not with a shader pack, not once Voxy holds the whole planet), it is cached as you move and computed up to 7 times faster
+- The planet map is updated in place instead of being rebuilt every 2 seconds, and its shader-pack version is built off the render thread: no more micro-stutters while flying with shaders
+- Fewer allocations in the seam code and faster world generation along the seams
+- New planet map: press M (QWERTY) to see the whole globe, your position and the spawn
+- Clearer Customize screen: planet size with its radius, walking time and Voxy generation time, and the three layers
+- No more dark hole below you when looking down from high up or from the End with Sodium
+- Seen from space with a shader pack: no more camouflage pattern on the globe, no more pale triangles over Voxy's terrain
+- The distant planet now updates when you build under End islands
+```
+
 ## Gallery
 
 Files are in the game profile's `screenshots/gallery` folder, 1920×1080, HUD hidden. The first one is the

@@ -43,6 +43,10 @@ minecarts, sculk, villagers and raids, light, sounds and particles.
 - **Three levels of detail**: 2-block cells near you, 4-block cells further away, then the whole planet.
 - It follows the day and night cycle like the terrain around you.
 
+### 🗺️ The planet map
+Press the **Planet map** key (M on a QWERTY keyboard, rebindable in Controls) to see the whole globe,
+centred on you, with your position and the world spawn. Drag to turn it, scroll to zoom.
+
 ### 🖥️ A loading screen worth watching
 When you create a world, watch the planet take shape stage by stage: continents, erosion, ridges,
 climate, biomes, relief and surface. Then the view lands on your spawn.
@@ -58,8 +62,10 @@ side of the globe.
 
 In single player, SphereWorld can **generate the whole planet for Voxy** when you first open a new world.
 The loading screen shows the planet filling in, with the number of chunks done and the time left. Press
-**Escape** at any time to play right away; the rest is generated the next time you open the world. Expect
-about an hour for the default 4,096-block planet.
+**Escape** at any time to play right away; the rest is generated the next time you open the world. The
+Customize screen gives an estimate for each size: about 40 minutes for the default 4,096-block planet on a
+recent PC, four times longer each time the size doubles. Once the whole planet is in Voxy, SphereWorld
+leaves the distant terrain to Voxy.
 
 Tested with Voxy 0.2.20 beta.
 
@@ -69,7 +75,8 @@ Planet curvature works with shader packs through **Iris**. SphereWorld was teste
 curve. Other packs should work too, since the curvature is applied to every pack the same way.
 
 The finer levels of detail of the distant planet are not drawn while a shader pack is on; the whole-planet
-map still is.
+map still is. Above the Overworld layer (in the End layer and in space), the pack's clouds are hidden so the
+globe stays clear.
 
 ### ✅ Other mods
 | Mod | Status |

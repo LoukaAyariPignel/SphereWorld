@@ -106,7 +106,7 @@ public final class PlanetDetail {
             ServerLevel level = player.level();
             PlanetGeometry geometry = Planets.of(level);
             PlanetAtlas atlas = geometry == null ? null : PlanetAtlases.get(level.dimension().identifier());
-            if (atlas == null) continue;
+            if (atlas == null || player.getY() < atlas.seaLevel() - 16) continue;
             String dimension = level.dimension().identifier().toString();
             if (!state.dimension.equals(dimension)) {
                 Arrays.fill(state.sent, null);
