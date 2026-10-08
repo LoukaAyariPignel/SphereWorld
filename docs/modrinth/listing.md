@@ -99,6 +99,25 @@ World generation update.
 - Smoother flight at high speed: with a large render distance, the game no longer rewrites every section of the view each time the camera crosses a section, only the new ones (about 14 times less work)
 ```
 
+## Version 0.1.4
+
+| Field | Value |
+|---|---|
+| File | `build/libs/sphereworld-0.1.4+mc26.3.jar` (not the `-sources.jar`) |
+| Version number | `0.1.4+mc26.3` |
+| Version name | SphereWorld 0.1.4 |
+| Release channel | Alpha |
+| Loaders | Fabric |
+| Game versions | 26.3 |
+| Dependencies | Fabric API: required. Sodium, Iris, Voxy: optional. |
+
+### Changelog
+
+```markdown
+- Water flowing down from the Overworld now stops at the top of the Nether layer, where it evaporates with a hiss, like water poured in the Nether
+- Lava still flows into the Nether layer as before
+```
+
 ## Version 0.1.3
 
 | Field | Value |

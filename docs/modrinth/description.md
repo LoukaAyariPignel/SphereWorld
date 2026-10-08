@@ -30,6 +30,8 @@ around seamlessly in every direction.
 - Each layer has its own ambience: Nether fog, End sky and music, the full **Ender Dragon fight**, End
   gateways and the dragon's respawn ritual.
 - The Overworld's deepslate runs down into the Nether's roof like vanilla bedrock, for a natural seam.
+- Water evaporates in the Nether layer, as in the Nether: it cannot be poured there, and water flowing
+  down from the Overworld stops at the top of the Nether layer.
 - Optional, in the Customize screen: **Overworld caves can reach the Nether**. The Overworld's own cave
   shapes keep going below its floor and open into the Nether's ceiling. Only the shape of the caves
   changes: ores and structures follow the same rules.
