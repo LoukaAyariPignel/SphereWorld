@@ -30,6 +30,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         if (scenarios.contains("lodupdate")) lodUpdate(context);
         if (scenarios.contains("atlaspatch")) atlasPatch(context);
         if (scenarios.contains("planetmap")) planetMap(context);
+        if (scenarios.contains("genstats")) genStats(context);
         if (scenarios.contains("savedworld")) {
             context.runOnClient(client -> client.options.renderDistance().set(Integer.getInteger("sphereworld.testRenderDistance", 12)));
             context.runOnClient(client -> client.createWorldOpenFlows().openWorld("SavedWorld", () -> {}));
@@ -715,6 +716,58 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
             world.getServer().runCommand("fill 200 260 260 360 260 420 red_wool");
             context.waitTicks(200);
             context.takeScreenshot("lod_after");
+        }
+    }
+
+    private static void genStats(ClientGameTestContext context) {
+        String label = System.getProperty("sphereworld.genLabel", "run");
+        try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
+            String result = world.getServer().computeOnServer(server -> {
+                var level = server.overworld();
+                int[][] areas = {{-8, -8, 16}, {64, 64, 12}, {120, -6, 8}, {-128, -6, 8}};
+                java.util.Map<String, Long> counts = new java.util.TreeMap<>();
+                StringBuilder hashes = new StringBuilder();
+                long start = System.nanoTime();
+                for (int[] area : areas) {
+                    for (int cx = area[0]; cx < area[0] + area[2]; cx++) {
+                        for (int cz = area[1]; cz < area[1] + area[2]; cz++) {
+                            level.getChunk(cx, cz);
+                        }
+                    }
+                }
+                long generated = System.nanoTime() - start;
+                for (int[] area : areas) {
+                    for (int cx = area[0] + 1; cx < area[0] + area[2] - 1; cx++) {
+                        for (int cz = area[1] + 1; cz < area[1] + area[2] - 1; cz++) {
+                            var chunk = level.getChunk(cx, cz);
+                            long hash = 1125899906842597L;
+                            for (int y = level.getMinY(); y <= level.getMaxY(); y++) {
+                                String band = dev.sphereworld.worldgen.stacked.StackBand.at(y).name();
+                                for (int x = 0; x < 16; x++) {
+                                    for (int z = 0; z < 16; z++) {
+                                        var state = chunk.getBlockState(new net.minecraft.core.BlockPos(cx * 16 + x, y, cz * 16 + z));
+                                        if (state.isAir()) continue;
+                                        int id = net.minecraft.world.level.block.Block.getId(state);
+                                        hash = 31 * hash + id * 1000003L + y * 769L + x * 17L + z;
+                                        counts.merge(band + " " + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath(), 1L, Long::sum);
+                                    }
+                                }
+                            }
+                            hashes.append(cx).append(',').append(cz).append(' ').append(Long.toHexString(hash)).append(System.lineSeparator());
+                        }
+                    }
+                }
+                StringBuilder out = new StringBuilder("generated in " + generated / 1_000_000 + " ms").append(System.lineSeparator());
+                counts.forEach((k, v) -> out.append(k).append(' ').append(v).append(System.lineSeparator()));
+                out.append("--- chunks").append(System.lineSeparator()).append(hashes);
+                return out.toString();
+            });
+            try {
+                java.nio.file.Files.writeString(java.nio.file.Path.of("genstats-" + label + ".txt"), result);
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+            log("genstats " + label + ": " + result.lines().findFirst().orElse(""));
         }
     }
 

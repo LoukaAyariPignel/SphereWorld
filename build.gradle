@@ -24,6 +24,7 @@ loom {
 				vmArg "-Dsphereworld.lapStep=${project.findProperty('lapStep') ?: '128'}"
 				vmArg "-Dsphereworld.savedWorldNight=${project.findProperty('savedWorldNight') ?: 'false'}"
 				vmArg "-Dsphereworld.gallerySuffix=${project.findProperty('gallerySuffix') ?: ''}"
+				vmArg "-Dsphereworld.genLabel=${project.findProperty('genLabel') ?: 'run'}"
 				if (project.hasProperty('jfr')) vmArg "-XX:StartFlightRecording=filename=${project.property('jfr')},settings=profile,dumponexit=true"
 				if (project.hasProperty('xmx')) vmArg "-Xmx${project.property('xmx')}"
 				if (project.hasProperty('gclog')) vmArg "-Xlog:gc*,safepoint:file=${project.property('gclog')}:time,uptime,level,tags"
