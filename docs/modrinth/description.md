@@ -63,7 +63,7 @@ side of the globe.
 In single player, SphereWorld can **generate the whole planet for Voxy** when you first open a new world.
 The loading screen shows the planet filling in, with the number of chunks done and the time left. Press
 **Escape** at any time to play right away; the rest is generated the next time you open the world. The
-Customize screen gives an estimate for each size: about 40 minutes for the default 4,096-block planet on a
+Customize screen gives an estimate for each size: about 20 minutes for the default 4,096-block planet on a
 recent PC, four times longer each time the size doubles. Once the whole planet is in Voxy, SphereWorld
 leaves the distant terrain to Voxy.
 

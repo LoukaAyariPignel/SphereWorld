@@ -36,7 +36,7 @@ import net.minecraft.world.level.levelgen.WorldDimensions;
 public final class PlanetCustomizeScreen extends Screen {
     private static final int DEFAULT_SIZE = 4096;
     private static final double WALK_SPEED = 4.317;
-    private static final double VOXY_CHUNKS_PER_SECOND = 30.0;
+    private static final double VOXY_CHUNKS_PER_SECOND = 60.0;
     private static final boolean VOXY = FabricLoader.getInstance().isModLoaded("voxy");
 
     private record Layer(StackBand band, String name, ItemStack icon, int color) {

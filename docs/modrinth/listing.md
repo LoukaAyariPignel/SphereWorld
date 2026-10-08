@@ -75,6 +75,29 @@ Performance and polish update.
 - The distant planet now updates when you build under End islands
 ```
 
+## Version 0.1.2
+
+| Field | Value |
+|---|---|
+| File | `build/libs/sphereworld-0.1.2+mc26.3.jar` (not the `-sources.jar`) |
+| Version number | `0.1.2+mc26.3` |
+| Version name | SphereWorld 0.1.2 |
+| Release channel | Alpha |
+| Loaders | Fabric |
+| Game versions | 26.3 |
+| Dependencies | Fabric API: required. Sodium, Iris, Voxy: optional. |
+
+### Changelog
+
+```markdown
+World generation update.
+
+- Generating the planet for Voxy is about 2.5 times faster: about 20 minutes for the default 4,096-block planet on a recent PC
+- New chunks are generated faster everywhere, not only for Voxy: the three layers are decorated with far less overhead, and the work that can run in parallel was moved out of the step Minecraft runs on a single thread
+- The planet is generated in square tiles, so chunks are no longer saved and reloaded while their neighbours are generated
+- No more forced memory collections during the generation for Voxy
+```
+
 ## Gallery
 
 Files are in the game profile's `screenshots/gallery` folder, 1920×1080, HUD hidden. The first one is the
