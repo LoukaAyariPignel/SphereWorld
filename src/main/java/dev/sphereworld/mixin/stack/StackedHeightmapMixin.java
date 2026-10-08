@@ -1,5 +1,7 @@
 package dev.sphereworld.mixin.stack;
 
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
+import com.llamalad7.mixinextras.sugar.Local;
 import dev.sphereworld.worldgen.stacked.StackBand;
 import dev.sphereworld.worldgen.stacked.StackedAmbience;
 import dev.sphereworld.worldgen.stacked.StackedHeightmaps;
@@ -8,12 +10,9 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.jspecify.annotations.Nullable;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -36,11 +35,12 @@ public final class StackedHeightmapMixin {
             return stacked;
         }
 
-        @Inject(method = "getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I", at = @At("RETURN"), cancellable = true)
-        private void sphereworld$overworldSurface(Heightmap.Types type, int x, int z, CallbackInfoReturnable<Integer> cir) {
-            if (cir.getReturnValueI() <= StackBand.OVERWORLD.worldMaxY() + 1 || !this.sphereworld$isStacked()) return;
+        @ModifyReturnValue(method = "getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I", at = @At("RETURN"))
+        private int sphereworld$overworldSurface(int original, @Local(argsOnly = true) Heightmap.Types type,
+                                                 @Local(argsOnly = true, ordinal = 0) int x, @Local(argsOnly = true, ordinal = 1) int z) {
+            if (original <= StackBand.OVERWORLD.worldMaxY() + 1 || !this.sphereworld$isStacked()) return original;
             LevelChunk chunk = ((Level) (Object) this).getChunk(SectionPos.blockToSectionCoord(x), SectionPos.blockToSectionCoord(z));
-            cir.setReturnValue(((StackedHeightmaps.Chunk) chunk).sphereworld$overworldHeight(type, x & 15, z & 15) + 1);
+            return ((StackedHeightmaps.Chunk) chunk).sphereworld$overworldHeight(type, x & 15, z & 15) + 1;
         }
 
         public BlockPos getHeightmapPos(Heightmap.Types type, BlockPos pos) {
@@ -59,29 +59,40 @@ public final class StackedHeightmapMixin {
 
     @Mixin(LevelChunk.class)
     public abstract static class ChunkMixin implements StackedHeightmaps.Chunk {
-        @Shadow
-        @Final
-        Level level;
+        @Unique
+        private static final int SPHEREWORLD$UNKNOWN = Integer.MIN_VALUE;
 
         @Unique
-        private volatile @Nullable ProtoChunk sphereworld$overworld;
+        private static final int SPHEREWORLD$TYPES = Heightmap.Types.values().length;
+
+        @Unique
+        private volatile int @Nullable [] sphereworld$overworld;
 
         @Override
         public int sphereworld$overworldHeight(Heightmap.Types type, int localX, int localZ) {
-            ProtoChunk view = this.sphereworld$overworld;
-            if (view == null) {
-                this.sphereworld$overworld = view = StackedHeightmaps.overworldView((LevelChunk) (Object) this, this.level.palettedContainerFactory());
+            int[] heights = this.sphereworld$overworld;
+            if (heights == null) {
+                heights = new int[SPHEREWORLD$TYPES << 8];
+                java.util.Arrays.fill(heights, SPHEREWORLD$UNKNOWN);
+                this.sphereworld$overworld = heights;
             }
-            return view.getHeight(type, localX, localZ);
+            int x = localX & 15;
+            int z = localZ & 15;
+            int index = type.ordinal() << 8 | z << 4 | x;
+            int height = heights[index];
+            if (height == SPHEREWORLD$UNKNOWN) {
+                height = StackedHeightmaps.overworldHeight((LevelChunk) (Object) this, type, x, z);
+                heights[index] = height;
+            }
+            return height;
         }
 
         @Inject(method = "setBlockState", at = @At("RETURN"))
         private void sphereworld$updateOverworld(BlockPos pos, BlockState state, int flags, CallbackInfoReturnable<BlockState> cir) {
-            ProtoChunk view = this.sphereworld$overworld;
-            if (view == null || cir.getReturnValue() == null || !StackBand.OVERWORLD.containsWorldY(pos.getY())) return;
-            for (Heightmap.Types type : StackedHeightmaps.types()) {
-                view.getOrCreateHeightmapUnprimed(type).update(pos.getX() & 15, pos.getY(), pos.getZ() & 15, state);
-            }
+            int[] heights = this.sphereworld$overworld;
+            if (heights == null || cir.getReturnValue() == null || !StackBand.OVERWORLD.containsWorldY(pos.getY())) return;
+            int column = (pos.getZ() & 15) << 4 | (pos.getX() & 15);
+            for (int type = 0; type < SPHEREWORLD$TYPES; type++) heights[type << 8 | column] = SPHEREWORLD$UNKNOWN;
         }
 
         @Inject(method = "replaceWithPacketData", at = @At("TAIL"))

@@ -49,6 +49,7 @@ public final class VoxyPregen {
     private static volatile @Nullable Progress progress;
     private static volatile boolean waiting;
     private static volatile boolean skipRequested;
+    private static volatile boolean planetComplete;
     private static @Nullable Run run;
     private static boolean wasFrozen;
 
@@ -58,7 +59,14 @@ public final class VoxyPregen {
     public static void init() {
         ServerLifecycleEvents.SERVER_STARTED.register(VoxyPregen::prepare);
         ServerTickEvents.END_SERVER_TICK.register(VoxyPregen::tick);
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> stop(server, false));
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            stop(server, false);
+            planetComplete = false;
+        });
+    }
+
+    public static boolean planetComplete() {
+        return planetComplete;
     }
 
     public static boolean active() {
@@ -81,7 +89,11 @@ public final class VoxyPregen {
     private static void prepare(MinecraftServer server) {
         progress = null;
         skipRequested = false;
-        if (!wanted(server) || Boolean.getBoolean("sphereworld.voxyPregenOnDemand")) return;
+        planetComplete = false;
+        if (!wanted(server)) return;
+        PlanetGeometry geometry = Planets.of(server.overworld());
+        planetComplete = geometry != null && readRow(server) >= rowsFor(geometry);
+        if (Boolean.getBoolean("sphereworld.voxyPregenOnDemand")) return;
         begin(server);
     }
 
@@ -139,6 +151,7 @@ public final class VoxyPregen {
         if (current == null) return;
         current.release();
         writeRow(server, finished ? current.rows : current.completedRow + 1);
+        if (finished) planetComplete = true;
         SphereWorld.LOGGER.info(finished ? "Voxy pregeneration finished" : "Voxy pregeneration paused at row {}", current.completedRow + 1);
     }
 

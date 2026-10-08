@@ -36,14 +36,21 @@ public record PlanetGeometry(int circumference, int surfaceY) {
     }
 
     public int canonical(int block) {
-        return Math.floorMod(block + half(), circumference) - half();
+        int h = circumference >> 1;
+        if (block >= -h && block < h) return block;
+        if (block >= h && block < h + circumference) return block - circumference;
+        if (block < -h && block >= -h - circumference) return block + circumference;
+        return Math.floorMod(block + h, circumference) - h;
     }
 
     public double canonical(double coordinate) {
+        double h = circumference >> 1;
+        if (coordinate >= -h && coordinate < h) return coordinate;
         double c = circumference;
-        double shifted = (coordinate + half()) % c;
+        double shifted = (coordinate + h) % c;
         if (shifted < 0) shifted += c;
-        return shifted - half();
+        double result = shifted - h;
+        return result < h ? result : -h;
     }
 
     public boolean isCanonical(int block) {
@@ -55,8 +62,11 @@ public record PlanetGeometry(int circumference, int surfaceY) {
     }
 
     public int canonicalChunk(int chunk) {
-        int n = chunks();
-        int h = halfChunks();
+        int n = circumference >> 4;
+        int h = circumference >> 5;
+        if (chunk >= -h && chunk < h) return chunk;
+        if (chunk >= h && chunk < h + n) return chunk - n;
+        if (chunk < -h && chunk >= -h - n) return chunk + n;
         return Math.floorMod(chunk + h, n) - h;
     }
 

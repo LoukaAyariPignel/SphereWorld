@@ -1,18 +1,12 @@
 package dev.sphereworld.worldgen.stacked;
 
-import java.util.Arrays;
-import java.util.EnumSet;
+import java.util.function.Predicate;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.PalettedContainerFactory;
-import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.ticks.ProtoChunkTicks;
 
 public final class StackedHeightmaps {
-    private static final EnumSet<Heightmap.Types> TYPES = EnumSet.allOf(Heightmap.Types.class);
-
     public interface Chunk {
         int sphereworld$overworldHeight(Heightmap.Types type, int localX, int localZ);
     }
@@ -20,17 +14,18 @@ public final class StackedHeightmaps {
     private StackedHeightmaps() {
     }
 
-    public static ProtoChunk overworldView(LevelChunk chunk, PalettedContainerFactory containers) {
+    public static int overworldHeight(LevelChunk chunk, Heightmap.Types type, int localX, int localZ) {
         StackBand band = StackBand.OVERWORLD;
+        Predicate<BlockState> opaque = type.isOpaque();
+        LevelChunkSection[] sections = chunk.getSections();
         int first = band.firstWorldSectionIndex();
-        LevelChunkSection[] sections = Arrays.copyOfRange(chunk.getSections(), first, first + band.sectionCount());
-        ProtoChunk view = new ProtoChunk(chunk.getPos(), UpgradeData.EMPTY, sections, new ProtoChunkTicks<>(), new ProtoChunkTicks<>(),
-                band.heightAccessor(), containers, null);
-        Heightmap.primeHeightmaps(view, TYPES);
-        return view;
-    }
-
-    public static Iterable<Heightmap.Types> types() {
-        return TYPES;
+        for (int s = Math.min(sections.length, first + band.sectionCount()) - 1; s >= first; s--) {
+            LevelChunkSection section = sections[s];
+            if (section.hasOnlyAir()) continue;
+            for (int y = 15; y >= 0; y--) {
+                if (opaque.test(section.getBlockState(localX, y, localZ))) return StackBand.WORLD_MIN_Y + (s << 4) + y;
+            }
+        }
+        return band.worldMinY() - 1;
     }
 }

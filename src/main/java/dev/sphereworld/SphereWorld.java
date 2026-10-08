@@ -56,6 +56,11 @@ public final class SphereWorld implements ModInitializer {
         PayloadTypeRegistry.clientboundPlay().registerLarge(dev.sphereworld.net.PlanetDetailPayload.TYPE,
                 dev.sphereworld.net.PlanetDetailPayload.CODEC, dev.sphereworld.net.PlanetDetailPayload.MAX_SIZE);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(dev.sphereworld.atlas.PlanetDetail::tick);
+        PayloadTypeRegistry.serverboundPlay().register(dev.sphereworld.net.PlanetViewPayload.TYPE, dev.sphereworld.net.PlanetViewPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(dev.sphereworld.net.PlanetViewPayload.TYPE,
+                (payload, context) -> dev.sphereworld.atlas.PlanetDetail.view(context.player(), payload));
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> dev.sphereworld.atlas.PlanetDetail.clear());
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> dev.sphereworld.atlas.PlanetDetail.clear());
         DevServerScript.install();
     }
 }

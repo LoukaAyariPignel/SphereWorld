@@ -54,10 +54,10 @@ abstract class TicketStorageMixin implements PlanetTickets {
 
     @Unique
     private static long sphereworld$canonical(PlanetGeometry g, long key) {
-        ChunkPos pos = ChunkPos.unpack(key);
-        int x = g.canonicalChunk(pos.x());
-        int z = g.canonicalChunk(pos.z());
-        return x == pos.x() && z == pos.z() ? key : ChunkPos.pack(x, z);
+        int x = ChunkPos.getX(key);
+        int z = ChunkPos.getZ(key);
+        if (g.isCanonicalChunk(x) && g.isCanonicalChunk(z)) return key;
+        return ChunkPos.pack(g.canonicalChunk(x), g.canonicalChunk(z));
     }
 
     @ModifyVariable(method = {

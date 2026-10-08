@@ -28,6 +28,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         if (scenarios.contains("packfar")) packFar(context);
         if (scenarios.contains("clouds")) clouds(context);
         if (scenarios.contains("lodupdate")) lodUpdate(context);
+        if (scenarios.contains("atlaspatch")) atlasPatch(context);
         if (scenarios.contains("savedworld")) {
             context.runOnClient(client -> client.options.renderDistance().set(Integer.getInteger("sphereworld.testRenderDistance", 12)));
             context.runOnClient(client -> client.createWorldOpenFlows().openWorld("SavedWorld", () -> {}));
@@ -497,6 +498,9 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
                 context.takeScreenshot("endviews_dragon_fog");
             }
         }
+        if (scenarios.contains("profileplay")) {
+            profilePlay(context, System.getProperty("sphereworld.galleryWorld", "Gallery"));
+        }
         if (scenarios.contains("dragon")) {
             context.runOnClient(client -> client.options.renderDistance().set(10));
             try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
@@ -710,6 +714,50 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
             world.getServer().runCommand("fill 200 260 260 360 260 420 red_wool");
             context.waitTicks(200);
             context.takeScreenshot("lod_after");
+        }
+    }
+
+    private static void atlasPatch(ClientGameTestContext context) {
+        context.runOnClient(client -> client.options.renderDistance().set(8));
+        try (TestSingleplayerContext world = context.worldBuilder()
+                .adjustSettings(SphereWorldClientTest::selectPlanet)
+                .create()) {
+            world.getServer().runCommand("gamemode spectator @a");
+            world.getServer().runCommand("time set noon");
+            world.getServer().runCommand("weather clear");
+            world.getServer().runCommand("gamerule advance_time false");
+            world.getServer().runCommand("tp @a 0 300 0 -90 25");
+            context.waitTicks(300);
+            context.runOnClient(client -> {
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new dev.sphereworld.net.PlanetViewPayload(false, false));
+                dev.sphereworld.client.render.DetailMeshes.clear();
+            });
+            context.waitTicks(40);
+            context.takeScreenshot("atlas_patch_before");
+            world.getServer().runCommand("forceload add 260 -100 460 100");
+            context.waitTicks(200);
+            world.getServer().runCommand("fill 260 250 -100 460 250 -1 red_wool");
+            world.getServer().runCommand("fill 260 250 0 460 250 100 red_wool");
+            context.waitTicks(200);
+            context.takeScreenshot("atlas_patch_after");
+            String result = context.computeOnClient(client -> {
+                var id = net.minecraft.resources.Identifier.withDefaultNamespace("overworld");
+                var mesh = dev.sphereworld.client.render.AtlasMeshes.get(id);
+                var atlas = dev.sphereworld.client.render.ClientAtlases.get(id);
+                if (mesh == null || atlas == null) return "no mesh";
+                int red = 0;
+                int cells = 0;
+                for (int x = 270; x < 450; x += atlas.cellSize()) {
+                    for (int z = -90; z < 90; z += atlas.cellSize()) {
+                        int color = mesh.shadedColors()[atlas.index(x, z)];
+                        int r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
+                        cells++;
+                        if (r > 2 * g && r > 2 * b) red++;
+                    }
+                }
+                return red + " of " + cells + " cells red, mesh version " + mesh.version();
+            });
+            log("atlas patch: " + result);
         }
     }
 
@@ -937,8 +985,97 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         context.takeScreenshot(net.fabricmc.fabric.api.client.gametest.v1.screenshot.TestScreenshotOptions.of("gallery_nether_hole" + suffix)
                 .withSize(1920, 1080).disableCounterPrefix());
         context.runOnClient(client -> { if (client.gui.hud.isHidden()) client.gui.hud.toggle(); });
-        context.runOnClient(client -> client.disconnectFromWorld(net.minecraft.network.chat.Component.empty()));
-        context.waitTicks(60);
+        leaveWorld(context);
+    }
+
+    private static final java.util.List<long[]> CLIENT_GAPS = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private static final java.util.List<long[]> SERVER_SLOW = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private static long lastClientTick;
+    private static long serverTickStart;
+    private static boolean timersInstalled;
+
+    private static void installTimers() {
+        if (timersInstalled) return;
+        timersInstalled = true;
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            long now = System.nanoTime();
+            if (lastClientTick != 0 && now - lastClientTick > 100_000_000L) CLIENT_GAPS.add(new long[] {System.currentTimeMillis(), (now - lastClientTick) / 1_000_000});
+            lastClientTick = now;
+        });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.START_SERVER_TICK.register(server -> serverTickStart = System.nanoTime());
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+            long took = System.nanoTime() - serverTickStart;
+            if (took > 100_000_000L) SERVER_SLOW.add(new long[] {System.currentTimeMillis(), took / 1_000_000});
+        });
+    }
+
+    private static void profilePlay(ClientGameTestContext context, String worldName) {
+        installTimers();
+        context.getInput().resizeWindow(1920, 1080);
+        context.runOnClient(client -> {
+            client.options.renderDistance().set(32);
+            client.options.simulationDistance().set(10);
+        });
+        context.runOnClient(client -> client.createWorldOpenFlows().openWorld(worldName, () -> {}));
+        context.waitTicks(100);
+        context.runOnClient(client -> {
+            if (client.gui.screen() instanceof net.minecraft.client.gui.screens.BackupConfirmScreen screen) {
+                for (var child : screen.children()) {
+                    if (child instanceof net.minecraft.client.gui.components.Button button
+                            && button.getMessage().getString().contains("Know")) {
+                        button.onPress(new net.minecraft.client.input.MouseButtonInfo(0, 0));
+                        return;
+                    }
+                }
+            }
+        });
+        context.waitFor(client -> client.level != null && client.player != null && client.gui.screen() == null, 6000);
+        var server = context.computeOnClient(client -> client.getSingleplayerServer());
+        java.util.function.Consumer<String> run = command -> context.runOnClient(client -> server.execute(() ->
+                server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command)));
+        run.accept("gamemode creative @a");
+        run.accept("tp @a 0.5 160 0.5 -90 20");
+        context.waitTicks(400);
+        CLIENT_GAPS.clear();
+        SERVER_SLOW.clear();
+        long start = System.currentTimeMillis();
+        log("profileplay: flight starts at " + start);
+        int ticks = Integer.getInteger("sphereworld.profileTicks", 4800);
+        for (int i = 0; i < ticks; i++) {
+            double heading = Math.toRadians(-90 + 35 * Math.sin(i / 600.0));
+            context.runOnClient(client -> {
+                var player = client.player;
+                player.getAbilities().flying = true;
+                player.setPos(player.getX() + Math.cos(heading) * 1.6, 160 + 25 * Math.sin(player.getX() / 400.0), player.getZ() + Math.sin(heading) * 1.6);
+                player.setYRot((float) Math.toDegrees(heading) - 90);
+                player.setXRot(18);
+            });
+            context.waitTick();
+        }
+        long end = System.currentTimeMillis();
+        log("profileplay: flight ends at " + end + " after " + (end - start) / 1000 + " s");
+        synchronized (CLIENT_GAPS) {
+            log("profileplay: client tick gaps over 100 ms: " + CLIENT_GAPS.size());
+            CLIENT_GAPS.stream().sorted((a, b) -> Long.compare(b[1], a[1])).limit(25)
+                    .forEach(g -> log("profileplay: client gap " + g[1] + " ms at " + g[0]));
+        }
+        synchronized (SERVER_SLOW) {
+            log("profileplay: server ticks over 100 ms: " + SERVER_SLOW.size());
+            SERVER_SLOW.stream().sorted((a, b) -> Long.compare(b[1], a[1])).limit(25)
+                    .forEach(g -> log("profileplay: server tick " + g[1] + " ms at " + g[0]));
+        }
+        leaveWorld(context);
+    }
+
+    private static void leaveWorld(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            client.level.disconnect(net.minecraft.network.chat.Component.translatable("menu.savingLevel"));
+            client.disconnect(new net.minecraft.client.gui.screens.GenericMessageScreen(
+                    net.minecraft.network.chat.Component.translatable("menu.savingLevel")), false);
+        });
+        context.waitFor(client -> !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning && client.level == null, 2400);
+        context.waitTicks(2);
+        context.setScreen(net.minecraft.client.gui.screens.TitleScreen::new);
     }
 
     static void selectPlanet(WorldCreationUiState state) {

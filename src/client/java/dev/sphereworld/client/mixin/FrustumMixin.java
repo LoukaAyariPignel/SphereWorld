@@ -21,6 +21,9 @@ abstract class FrustumMixin {
     @Shadow private double camY;
     @Shadow private double camZ;
 
+    @org.spongepowered.asm.mixin.Unique
+    private static final Vector3f SPHEREWORLD$CORNER = new Vector3f();
+
     @Inject(method = "cubeInFrustum(DDDDDD)I", at = @At("HEAD"), cancellable = true)
     private void sphereworld$curvedCube(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                         CallbackInfoReturnable<Integer> cir) {
@@ -30,7 +33,7 @@ abstract class FrustumMixin {
         float cameraRadius = PlanetCurve.cameraRadius(g, camY);
         float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY, z0 = Float.POSITIVE_INFINITY;
         float x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY, z1 = Float.NEGATIVE_INFINITY;
-        Vector3f corner = new Vector3f();
+        Vector3f corner = SPHEREWORLD$CORNER;
         for (int i = 0; i < 8; i++) {
             corner.set((float) (((i & 1) == 0 ? minX : maxX) - camX),
                     (float) (((i & 2) == 0 ? minY : maxY) - camY),

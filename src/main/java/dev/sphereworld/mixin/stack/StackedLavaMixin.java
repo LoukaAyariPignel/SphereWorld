@@ -1,6 +1,7 @@
 package dev.sphereworld.mixin.stack;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -19,7 +20,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 public final class StackedLavaMixin {
     private StackedLavaMixin() {
@@ -27,10 +27,10 @@ public final class StackedLavaMixin {
 
     @Mixin(LavaFluid.class)
     public abstract static class Lava {
-        @Inject(method = "isFastLava", at = @At("HEAD"), cancellable = true)
-        private static void sphereworld$atPosition(LevelReader level, CallbackInfoReturnable<Boolean> cir) {
+        @ModifyReturnValue(method = "isFastLava", at = @At("RETURN"))
+        private static boolean sphereworld$atPosition(boolean original, @Local(argsOnly = true) LevelReader level) {
             BlockPos pos = StackedWorld.FLUID_AT.get();
-            if (pos != null) cir.setReturnValue(level.environmentAttributes().getValue(EnvironmentAttributes.FAST_LAVA, pos));
+            return pos == null ? original : level.environmentAttributes().getValue(EnvironmentAttributes.FAST_LAVA, pos);
         }
     }
 
@@ -43,7 +43,7 @@ public final class StackedLavaMixin {
 
         @Inject(method = "tick", at = @At("RETURN"))
         private void sphereworld$leave(ServerLevel level, BlockPos pos, BlockState blockState, FluidState fluidState, CallbackInfo ci) {
-            StackedWorld.FLUID_AT.remove();
+            StackedWorld.FLUID_AT.set(null);
         }
     }
 

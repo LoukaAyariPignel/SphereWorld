@@ -14,9 +14,13 @@ public record PlanetTrackingView(ChunkPos center, int viewDistance, PlanetGeomet
         return ChunkTrackingView.isWithinDistance(0, 0, viewDistance, dx, dz, includeNeighbors);
     }
 
+    private int reach() {
+        return Math.min(viewDistance + 1, geometry.halfChunks() - 1);
+    }
+
     @Override
     public void forEach(Consumer<ChunkPos> consumer) {
-        int r = Math.min(viewDistance + 1, geometry.halfChunks() - 1);
+        int r = reach();
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 if (ChunkTrackingView.isWithinDistance(0, 0, viewDistance, dx, dz, true)) {
@@ -27,16 +31,31 @@ public record PlanetTrackingView(ChunkPos center, int viewDistance, PlanetGeomet
         }
     }
 
-    private LongOpenHashSet keys() {
-        LongOpenHashSet set = new LongOpenHashSet();
-        forEach(pos -> set.add(pos.pack()));
-        return set;
-    }
-
     public static void difference(ChunkTrackingView from, ChunkTrackingView to, Consumer<ChunkPos> onEnter, Consumer<ChunkPos> onLeave) {
         if (from.equals(to)) return;
-        LongOpenHashSet before = from instanceof PlanetTrackingView p ? p.keys() : collect(from);
-        LongOpenHashSet after = to instanceof PlanetTrackingView p ? p.keys() : collect(to);
+        if (from instanceof PlanetTrackingView last && to instanceof PlanetTrackingView next && last.geometry.equals(next.geometry)) {
+            PlanetGeometry g = next.geometry;
+            int offsetX = g.chunkDelta(next.center.x(), last.center.x());
+            int offsetZ = g.chunkDelta(next.center.z(), last.center.z());
+            int minX = Math.min(-next.reach(), offsetX - last.reach());
+            int maxX = Math.max(next.reach(), offsetX + last.reach());
+            int minZ = Math.min(-next.reach(), offsetZ - last.reach());
+            int maxZ = Math.max(next.reach(), offsetZ + last.reach());
+            if (maxX - minX < g.chunks() && maxZ - minZ < g.chunks()) {
+                for (int dx = minX; dx <= maxX; dx++) {
+                    int x = g.canonicalChunk(next.center.x() + dx);
+                    for (int dz = minZ; dz <= maxZ; dz++) {
+                        int z = g.canonicalChunk(next.center.z() + dz);
+                        boolean saw = last.contains(x, z, true);
+                        boolean sees = next.contains(x, z, true);
+                        if (saw != sees) (sees ? onEnter : onLeave).accept(new ChunkPos(x, z));
+                    }
+                }
+                return;
+            }
+        }
+        LongOpenHashSet before = collect(from);
+        LongOpenHashSet after = collect(to);
         before.forEach(key -> {
             if (!after.contains(key)) onLeave.accept(ChunkPos.unpack(key));
         });

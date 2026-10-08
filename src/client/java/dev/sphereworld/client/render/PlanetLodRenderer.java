@@ -21,7 +21,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.util.Util;
 import net.minecraft.world.phys.Vec3;
+import java.util.concurrent.CompletableFuture;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.jspecify.annotations.Nullable;
@@ -42,14 +44,25 @@ public final class PlanetLodRenderer {
 
     private static final RenderSystem.AutoStorageIndexBuffer QUAD_INDICES = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
     private static final double PACK_REBUILD_DISTANCE = 48.0;
+    private static final long PACK_REFRESH_MILLIS = 5000;
 
     private static final boolean VOXY = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("voxy");
     private static final float UNDER_VOXY = VOXY ? 12.0F : 0.0F;
+
+    private record PackBuilt(Vec3 origin, AtlasMeshes.Mesh source, long version, @Nullable ByteBufferBuilder bytes, @Nullable MeshData mesh) {
+        void close() {
+            if (mesh != null) mesh.close();
+            if (bytes != null) bytes.close();
+        }
+    }
 
     private static @Nullable GpuBuffer packBuffer;
     private static int packIndexCount;
     private static @Nullable Vec3 packOrigin;
     private static AtlasMeshes.@Nullable Mesh packSource;
+    private static long packVersion;
+    private static long packStarted;
+    private static @Nullable CompletableFuture<PackBuilt> packBuilding;
     private static volatile boolean closeRequested;
 
     private PlanetLodRenderer() {
@@ -124,8 +137,27 @@ public final class PlanetLodRenderer {
 
     private static void renderForPack(RenderPass pass, Minecraft client, PlanetGeometry geometry, AtlasMeshes.Mesh mesh) {
         Vec3 camera = client.gameRenderer.mainCamera().position();
-        if (packBuffer == null || packOrigin == null || packSource != mesh || packOrigin.distanceTo(camera) > PACK_REBUILD_DISTANCE) {
-            buildAroundCamera(client, geometry, camera, mesh);
+        if (packBuilding != null && packBuilding.isDone()) {
+            PackBuilt built = packBuilding.getNow(null);
+            packBuilding = null;
+            if (built != null) uploadPack(built);
+        }
+        boolean moved = packOrigin == null || packOrigin.distanceTo(camera) > PACK_REBUILD_DISTANCE;
+        boolean replaced = packSource != mesh;
+        boolean refreshed = packVersion != mesh.version() && Util.getMillis() - packStarted > PACK_REFRESH_MILLIS;
+        if (packBuilding == null && (moved || replaced || refreshed)) {
+            packStarted = Util.getMillis();
+            Vec3 origin = new Vec3(Math.floor(camera.x), Math.floor(camera.y), Math.floor(camera.z));
+            double hole = Math.max(16.0, client.options.getEffectiveRenderDistance() * 16.0 - 24.0);
+            PlanetAtlas atlas = mesh.atlas();
+            short[] heights = atlas.heights().clone();
+            int[] colors = mesh.shadedColors().clone();
+            long version = mesh.version();
+            packBuilding = CompletableFuture.supplyAsync(() -> buildAroundCamera(geometry, atlas, heights, colors, origin, hole, mesh, version),
+                    Util.backgroundExecutor()).exceptionally(error -> {
+                        SphereWorld.LOGGER.error("Could not build the distant planet mesh for the shader pack", error);
+                        return null;
+                    });
         }
         if (packBuffer == null || packIndexCount == 0 || packOrigin == null) return;
 
@@ -154,44 +186,53 @@ public final class PlanetLodRenderer {
         pass.popDebugGroup();
     }
 
-    private static void buildAroundCamera(Minecraft client, PlanetGeometry geometry, Vec3 camera, AtlasMeshes.Mesh mesh) {
-        closeNow();
-        packSource = mesh;
-        PlanetAtlas a = mesh.atlas();
-        int[] colors = mesh.shadedColors();
-        Vec3 origin = new Vec3(Math.floor(camera.x), Math.floor(camera.y), Math.floor(camera.z));
-        packOrigin = origin;
+    private static PackBuilt buildAroundCamera(PlanetGeometry geometry, PlanetAtlas a, short[] heights, int[] colors, Vec3 origin, double hole,
+                                               AtlasMeshes.Mesh source, long version) {
         int n = a.size();
         int cell = a.cellSize();
         int half = a.circumference() / 2;
-        double hole = Math.max(16.0, client.options.getEffectiveRenderDistance() * 16.0 - 24.0);
-        try (ByteBufferBuilder bytes = new ByteBufferBuilder(n * n * 4 * DefaultVertexFormat.POSITION_TEX_COLOR.getVertexSize())) {
-            BufferBuilder builder = new BufferBuilder(bytes, PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-            int quads = 0;
-            for (int row = 0; row < n; row++) {
-                for (int col = 0; col < n; col++) {
-                    int color = colors[row * n + col];
-                    if (color == 0) continue;
-                    double cx = -half + col * cell + cell;
-                    double cz = -half + row * cell + cell;
-                    double dx = geometry.delta(origin.x, cx);
-                    double dz = geometry.delta(origin.z, cz);
-                    double dy = AtlasMeshes.height(a, row, col) - origin.y;
-                    if (dx * dx + dz * dz < hole * hole) continue;
-                    float x = (float) (dx - cell * 0.5);
-                    float z = (float) (dz - cell * 0.5);
-                    builder.addVertex(x, (float) (AtlasMeshes.height(a, row, col) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);
-                    builder.addVertex(x, (float) (AtlasMeshes.height(a, row + 1, col) - origin.y), z + cell).setUv(0.5F, 0.5F).setColor(color);
-                    builder.addVertex(x + cell, (float) (AtlasMeshes.height(a, row + 1, col + 1) - origin.y), z + cell).setUv(0.5F, 0.5F).setColor(color);
-                    builder.addVertex(x + cell, (float) (AtlasMeshes.height(a, row, col + 1) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);
-                    quads++;
-                }
+        int sea = a.seaLevel();
+        ByteBufferBuilder bytes = ByteBufferBuilder.exactlySized(n * n * 4 * DefaultVertexFormat.POSITION_TEX_COLOR.getVertexSize());
+        BufferBuilder builder = new BufferBuilder(bytes, PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        int quads = 0;
+        for (int row = 0; row < n; row++) {
+            for (int col = 0; col < n; col++) {
+                int color = colors[row * n + col];
+                if (color == 0) continue;
+                double cx = -half + col * cell + cell;
+                double cz = -half + row * cell + cell;
+                double dx = geometry.delta(origin.x, cx);
+                double dz = geometry.delta(origin.z, cz);
+                if (dx * dx + dz * dz < hole * hole) continue;
+                float x = (float) (dx - cell * 0.5);
+                float z = (float) (dz - cell * 0.5);
+                builder.addVertex(x, (float) (AtlasMeshes.height(heights, n, sea, row, col) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);
+                builder.addVertex(x, (float) (AtlasMeshes.height(heights, n, sea, row + 1, col) - origin.y), z + cell).setUv(0.5F, 0.5F).setColor(color);
+                builder.addVertex(x + cell, (float) (AtlasMeshes.height(heights, n, sea, row + 1, col + 1) - origin.y), z + cell).setUv(0.5F, 0.5F).setColor(color);
+                builder.addVertex(x + cell, (float) (AtlasMeshes.height(heights, n, sea, row, col + 1) - origin.y), z).setUv(0.5F, 0.5F).setColor(color);
+                quads++;
             }
-            if (quads == 0) return;
-            try (MeshData data = builder.buildOrThrow()) {
-                packIndexCount = data.drawState().indexCount();
-                packBuffer = RenderSystem.getDevice().createBuffer(() -> "SphereWorld planet LOD (shader pack)", 32, data.vertexBuffer());
-            }
+        }
+        if (quads == 0) {
+            bytes.close();
+            return new PackBuilt(origin, source, version, null, null);
+        }
+        return new PackBuilt(origin, source, version, bytes, builder.buildOrThrow());
+    }
+
+    private static void uploadPack(PackBuilt built) {
+        try {
+            if (packBuffer != null) packBuffer.close();
+            packBuffer = null;
+            packIndexCount = 0;
+            packOrigin = built.origin();
+            packSource = built.source();
+            packVersion = built.version();
+            if (built.mesh() == null) return;
+            packIndexCount = built.mesh().drawState().indexCount();
+            packBuffer = RenderSystem.getDevice().createBuffer(() -> "SphereWorld planet LOD (shader pack)", GpuBuffer.USAGE_VERTEX, built.mesh().vertexBuffer());
+        } finally {
+            built.close();
         }
     }
 
@@ -205,8 +246,15 @@ public final class PlanetLodRenderer {
             packBuffer.close();
             packBuffer = null;
         }
+        if (packBuilding != null) {
+            packBuilding.thenAccept(built -> {
+                if (built != null) built.close();
+            });
+            packBuilding = null;
+        }
         packIndexCount = 0;
         packOrigin = null;
         packSource = null;
+        packVersion = 0;
     }
 }

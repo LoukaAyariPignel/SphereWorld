@@ -210,14 +210,24 @@ public final class PeriodicDensity {
         public void sampleVolume(SamplerContext context, DensityBuffer out, DensityVolume volume) {
             int shiftX = canonical(volume.minBlockX()) - volume.minBlockX();
             int shiftZ = canonical(volume.minBlockZ()) - volume.minBlockZ();
-            int maxX = volume.maxBlockX() + shiftX;
-            int maxZ = volume.maxBlockZ() + shiftZ;
-            if (maxX >= h || maxZ >= h) {
-                DensitySampler.sampleVolumeNaive(context, out, volume, this);
+            int firstX = volume.minBlockX() + shiftX;
+            int firstZ = volume.minBlockZ() + shiftZ;
+            int lastX = firstX + (volume.sizeX() - 1) * volume.stepBlockX();
+            int lastZ = firstZ + (volume.sizeZ() - 1) * volume.stepBlockZ();
+            if (lastX >= h) {
+                int k = Math.ceilDiv(h - firstX, volume.stepBlockX());
+                sampleInto(context, out, volume, withX(volume, 0, k), 0, 0);
+                sampleInto(context, out, volume, withX(volume, k, volume.sizeX() - k), k, 0);
                 return;
             }
-            boolean bandX = maxX >= bandStart;
-            boolean bandZ = maxZ >= bandStart;
+            if (lastZ >= h) {
+                int k = Math.ceilDiv(h - firstZ, volume.stepBlockZ());
+                sampleInto(context, out, volume, withZ(volume, 0, k), 0, 0);
+                sampleInto(context, out, volume, withZ(volume, k, volume.sizeZ() - k), 0, k);
+                return;
+            }
+            boolean bandX = lastX >= bandStart;
+            boolean bandZ = lastZ >= bandStart;
             DensityVolume base = shiftX == 0 && shiftZ == 0 ? volume : shifted(volume, shiftX, shiftZ);
             inner.sampleVolume(context, out, noiseSpace(base, 0, 0));
             if (!bandX && !bandZ) return;
@@ -265,6 +275,30 @@ public final class PeriodicDensity {
                 if (imageZ != null) imageZ.close();
                 if (imageXZ != null) imageXZ.close();
             }
+        }
+
+        private void sampleInto(SamplerContext context, DensityBuffer out, DensityVolume whole, DensityVolume part, int offsetX, int offsetZ) {
+            try (ScopedDensityBuffer buffer = context.acquireBuffer(part)) {
+                sampleVolume(context, buffer, part);
+                int sizeY = part.sizeY();
+                for (int iz = 0; iz < part.sizeZ(); iz++) {
+                    for (int ix = 0; ix < part.sizeX(); ix++) {
+                        int from = part.indexUnchecked(ix, 0, iz);
+                        int to = whole.indexUnchecked(ix + offsetX, 0, iz + offsetZ);
+                        for (int iy = 0; iy < sizeY; iy++) out.set(to + iy, buffer.get(from + iy));
+                    }
+                }
+            }
+        }
+
+        private static DensityVolume withX(DensityVolume v, int start, int size) {
+            return new DensityVolume(size, v.sizeY(), v.sizeZ(), v.minBlockX() + start * v.stepBlockX(), v.minBlockY(), v.minBlockZ(),
+                    v.stepBlockX(), v.stepBlockY(), v.stepBlockZ());
+        }
+
+        private static DensityVolume withZ(DensityVolume v, int start, int size) {
+            return new DensityVolume(v.sizeX(), v.sizeY(), size, v.minBlockX(), v.minBlockY(), v.minBlockZ() + start * v.stepBlockZ(),
+                    v.stepBlockX(), v.stepBlockY(), v.stepBlockZ());
         }
 
         private DensityVolume noiseSpace(DensityVolume v, int dx, int dz) {
