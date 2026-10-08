@@ -503,6 +503,8 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         if (scenarios.contains("profileplay")) {
             profilePlay(context, System.getProperty("sphereworld.galleryWorld", "Gallery"));
         }
+        if (scenarios.contains("flyfast")) flyFast(context, System.getProperty("sphereworld.flyWorld", "FlyWorld"));
+        if (scenarios.contains("rotating")) rotatingStorage();
         if (scenarios.contains("dragon")) {
             context.runOnClient(client -> client.options.renderDistance().set(10));
             try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(SphereWorldClientTest::selectPlanet).create()) {
@@ -1089,7 +1091,7 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.START_SERVER_TICK.register(server -> serverTickStart = System.nanoTime());
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
             long took = System.nanoTime() - serverTickStart;
-            if (took > 100_000_000L) SERVER_SLOW.add(new long[] {System.currentTimeMillis(), took / 1_000_000});
+            if (took > 50_000_000L) SERVER_SLOW.add(new long[] {System.currentTimeMillis(), took / 1_000_000});
         });
     }
 
@@ -1149,6 +1151,167 @@ public final class SphereWorldClientTest implements FabricClientGameTest {
                     .forEach(g -> log("profileplay: server tick " + g[1] + " ms at " + g[0]));
         }
         leaveWorld(context);
+    }
+
+    private static final java.util.List<long[]> FRAME_SPIKES = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private static final long[] FRAME_HISTOGRAM = new long[8];
+    private static final long[] FRAME_LIMITS = {17, 34, 50, 100, 200, 500, 1000, Long.MAX_VALUE};
+    private static volatile long lastFrame;
+    private static boolean frameTimerInstalled;
+
+    private static void installFrameTimer() {
+        if (frameTimerInstalled) return;
+        frameTimerInstalled = true;
+        net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry.addLast(dev.sphereworld.SphereWorld.id("test_frame_timer"), (graphics, delta) -> {
+            long now = System.nanoTime();
+            long last = lastFrame;
+            lastFrame = now;
+            if (last == 0) return;
+            long ms = (now - last) / 1_000_000;
+            for (int i = 0; i < FRAME_LIMITS.length; i++) {
+                if (ms < FRAME_LIMITS[i]) {
+                    FRAME_HISTOGRAM[i]++;
+                    break;
+                }
+            }
+            if (ms >= 50) FRAME_SPIKES.add(new long[] {System.currentTimeMillis(), ms});
+        });
+    }
+
+    private static void flyFast(ClientGameTestContext context, String worldName) {
+        installTimers();
+        installFrameTimer();
+        context.getInput().resizeWindow(1920, 1080);
+        context.runOnClient(client -> {
+            client.options.renderDistance().set(Integer.getInteger("sphereworld.testRenderDistance", 32));
+            client.options.simulationDistance().set(10);
+            client.options.framerateLimit().set(260);
+            client.options.enableVsync().set(false);
+        });
+        context.runOnClient(client -> client.createWorldOpenFlows().openWorld(worldName, () -> {}));
+        context.waitTicks(100);
+        context.runOnClient(client -> {
+            if (client.gui.screen() instanceof net.minecraft.client.gui.screens.BackupConfirmScreen screen) {
+                for (var child : screen.children()) {
+                    if (child instanceof net.minecraft.client.gui.components.Button button
+                            && button.getMessage().getString().contains("Know")) {
+                        button.onPress(new net.minecraft.client.input.MouseButtonInfo(0, 0));
+                        return;
+                    }
+                }
+            }
+        });
+        context.waitFor(client -> client.level != null && client.player != null && client.gui.screen() == null, 12000);
+        var server = context.computeOnClient(client -> client.getSingleplayerServer());
+        context.runOnClient(client -> server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "gamemode spectator @a")));
+        String startAt = System.getProperty("sphereworld.flyStart", "-2357 88 585 52.6 8");
+        if (!startAt.isBlank()) context.runOnClient(client -> server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "tp @a " + startAt)));
+        context.waitTicks(Integer.getInteger("sphereworld.flySettleTicks", 600));
+        for (int i = 0; i < 40; i++) {
+            context.getInput().scroll(1.0);
+            context.waitTick();
+        }
+        float yaw = Float.parseFloat(System.getProperty("sphereworld.flyYaw", "NaN"));
+        context.runOnClient(client -> {
+            if (!Float.isNaN(yaw)) client.player.setYRot(yaw);
+            client.player.setXRot(Float.parseFloat(System.getProperty("sphereworld.flyPitch", "8")));
+        });
+        double[] from = context.computeOnClient(client -> new double[] {client.player.getX(), client.player.getY(), client.player.getZ(), client.player.getAbilities().getFlyingSpeed(), client.player.getYRot()});
+        log("flyfast: start at " + Math.round(from[0]) + " " + Math.round(from[1]) + " " + Math.round(from[2]) + ", flying speed " + from[3] + ", yaw " + from[4]);
+        CLIENT_GAPS.clear();
+        SERVER_SLOW.clear();
+        FRAME_SPIKES.clear();
+        java.util.Arrays.fill(FRAME_HISTOGRAM, 0);
+        lastFrame = 0;
+        long start = System.currentTimeMillis();
+        log("flyfast: flight starts at " + start);
+        context.getInput().holdKey(options -> options.keySprint);
+        context.getInput().holdKey(options -> options.keyUp);
+        int ticks = Integer.getInteger("sphereworld.profileTicks", 1800);
+        for (int i = 0; i < ticks; i += 20) context.waitTicks(20);
+        context.getInput().releaseKey(options -> options.keyUp);
+        context.getInput().releaseKey(options -> options.keySprint);
+        long end = System.currentTimeMillis();
+        double[] to = context.computeOnClient(client -> new double[] {client.player.getX(), client.player.getY(), client.player.getZ()});
+        double distance = Math.hypot(to[0] - from[0], to[2] - from[2]);
+        log("flyfast: flight ends at " + end + " after " + (end - start) / 1000 + " s, " + Math.round(distance) + " blocks, "
+                + Math.round(distance * 1000.0 / (end - start)) + " blocks/s");
+        long frames = 0;
+        for (long n : FRAME_HISTOGRAM) frames += n;
+        log("flyfast: " + frames + " frames, " + Math.round(frames * 1000.0 / (end - start)) + " fps on average");
+        StringBuilder histogram = new StringBuilder("flyfast: frame times");
+        String[] labels = {"<17", "17-33", "34-49", "50-99", "100-199", "200-499", "500-999", ">=1000"};
+        for (int i = 0; i < labels.length; i++) histogram.append(' ').append(labels[i]).append("ms:").append(FRAME_HISTOGRAM[i]);
+        log(histogram.toString());
+        synchronized (FRAME_SPIKES) {
+            log("flyfast: frames over 50 ms: " + FRAME_SPIKES.size());
+            FRAME_SPIKES.stream().sorted((a, b) -> Long.compare(b[1], a[1])).limit(40)
+                    .forEach(g -> log("flyfast: frame " + g[1] + " ms at " + g[0]));
+        }
+        synchronized (SERVER_SLOW) {
+            log("flyfast: server ticks over 50 ms: " + SERVER_SLOW.size());
+            SERVER_SLOW.stream().sorted((a, b) -> Long.compare(b[1], a[1])).limit(25)
+                    .forEach(g -> log("flyfast: server tick " + g[1] + " ms at " + g[0]));
+        }
+        leaveWorld(context);
+    }
+
+    private static final class TestNode implements net.minecraft.client.RotatingSectionStorage.Value {
+        private long node;
+        private int changes;
+
+        private TestNode(long node) {
+            this.node = node;
+        }
+
+        @Override
+        public void setSectionNode(long sectionNode) {
+            node = sectionNode;
+            changes++;
+        }
+
+        @Override
+        public long getSectionNode() {
+            return node;
+        }
+    }
+
+    private static void rotatingStorage() {
+        boolean patched = java.util.Arrays.stream(net.minecraft.client.RotatingSectionStorage.class.getDeclaredMethods())
+                .anyMatch(m -> m.getName().contains("sphereworld$repositionEnteringColumns"));
+        if (!patched) throw new AssertionError("rotating storage is not patched");
+        int radius = 5;
+        var storage = new net.minecraft.client.RotatingSectionStorage<TestNode>(radius, -12, 35, (index, node) -> new TestNode(node));
+        java.util.Random random = new java.util.Random(7);
+        int x = 0, y = 4, z = 0;
+        long changes = 0;
+        for (int step = 0; step < 20000; step++) {
+            int roll = random.nextInt(20);
+            if (roll == 0) {
+                x += random.nextInt(200) - 100;
+                z += random.nextInt(200) - 100;
+            } else if (roll < 4) {
+                y = -12 + random.nextInt(48);
+            } else {
+                x += random.nextInt(7) - 3;
+                z += random.nextInt(7) - 3;
+            }
+            storage.repositionCenter(net.minecraft.core.SectionPos.of(x, y, z));
+            java.util.Set<TestNode> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            for (int sx = x - radius; sx <= x + radius; sx++) {
+                for (int sz = z - radius; sz <= z + radius; sz++) {
+                    for (int sy = -12; sy <= 35; sy++) {
+                        TestNode value = storage.getValue(sx, sy, sz);
+                        long expected = net.minecraft.core.SectionPos.asLong(sx, sy, sz);
+                        if (value == null || value.getSectionNode() != expected || !seen.add(value)) {
+                            throw new AssertionError("rotating storage wrong at step " + step + " for section " + sx + " " + sy + " " + sz);
+                        }
+                    }
+                }
+            }
+        }
+        for (TestNode node : storage) changes += node.changes;
+        log("PASS rotating storage stays consistent over 20000 moves (" + changes + " node changes)");
     }
 
     private static void leaveWorld(ClientGameTestContext context) {

@@ -27,6 +27,7 @@ loom {
 				vmArg "-Dsphereworld.genLabel=${project.findProperty('genLabel') ?: 'run'}"
 				if (project.hasProperty('jfr')) vmArg "-XX:StartFlightRecording=filename=${project.property('jfr')},settings=profile,dumponexit=true"
 				if (project.hasProperty('xmx')) vmArg "-Xmx${project.property('xmx')}"
+				if (project.hasProperty('jvmExtra')) project.property('jvmExtra').toString().split(' ').each { vmArg it }
 				if (project.hasProperty('gclog')) vmArg "-Xlog:gc*,safepoint:file=${project.property('gclog')}:time,uptime,level,tags"
 				vmArg "-Dsphereworld.profileTicks=${project.findProperty('profileTicks') ?: '4800'}"
 				vmArg "-Dsphereworld.noShaderPatch=${project.findProperty('noShaderPatch') ?: 'false'}"
