@@ -79,7 +79,7 @@ public final class PlanetLodRenderer {
     }
 
     public static void renderAfterTerrain(RenderPass pass) {
-        if (VOXY) renderPlanet(pass);
+        if (VOXY && !dev.sphereworld.compat.VoxyPregen.planetComplete()) renderPlanet(pass);
     }
 
     private static void renderPlanet(RenderPass pass) {

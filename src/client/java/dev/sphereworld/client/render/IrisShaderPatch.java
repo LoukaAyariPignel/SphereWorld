@@ -162,6 +162,7 @@ public final class IrisShaderPatch {
                     return vec3(sphereworld_cloudCamera.x + flatXZ.x, %2$d.0 + length(centred) - %1$.4f, sphereworld_cloudCamera.z + flatXZ.y);
                 }
                 float sphereworld_shellDistance(float altitude, vec3 direction) {
+                    if (sphereworld_cloudCamera.y > %3$d.0) return -1.0;
                     float cameraRadius = sphereworld_cameraRadius(sphereworld_cloudCamera.y);
                     float shellRadius = %1$.4f + altitude - %2$d.0;
                     float b = cameraRadius * direction.y;
@@ -173,7 +174,7 @@ public final class IrisShaderPatch {
                     float t = -b - sqrt(disc);
                     return t > 0.0 ? t : -1.0;
                 }
-                """, g.radius(), g.surfaceY());
+                """, g.radius(), g.surfaceY(), cloudCeiling());
         String samplePos = noise.group(1);
         String cameraPos = volumetric.group(2);
         String direction = volumetric.group(3);
@@ -207,6 +208,13 @@ public final class IrisShaderPatch {
         SphereWorld.LOGGER.debug("Planet shells for the pack's ray-marched clouds");
         dump("clouds-" + Integer.toHexString(source.hashCode()) + ".patched", out.toString());
         return out.toString();
+    }
+
+    private static int cloudCeiling() {
+        var level = Minecraft.getInstance().level;
+        if (level == null) return Integer.MAX_VALUE / 2;
+        return dev.sphereworld.worldgen.stacked.StackedAmbience.isStackedType(level)
+                ? dev.sphereworld.worldgen.stacked.StackBand.OVERWORLD.worldMaxY() + 1 : level.getMaxY() + 1;
     }
 
     private static String reprojected(String body, Matcher main, String curve, boolean shadow) {
