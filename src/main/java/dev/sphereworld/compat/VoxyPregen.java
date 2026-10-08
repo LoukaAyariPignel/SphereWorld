@@ -1,18 +1,28 @@
 package dev.sphereworld.compat;
 
+import com.sun.management.GarbageCollectorMXBean;
+import com.sun.management.GcInfo;
 import dev.sphereworld.SphereWorld;
 import dev.sphereworld.mixin.level.ChunkCacheInvoker;
 import dev.sphereworld.mixin.level.ChunkMapInvoker;
 import dev.sphereworld.planet.PlanetGeometry;
 import dev.sphereworld.planet.Planets;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
+import java.lang.management.MemoryUsage;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -39,6 +49,8 @@ public final class VoxyPregen {
     private static final int MAX_VOXY_BACKLOG = 48 * 128;
     private static final double MAX_HEAP = 0.70;
     private static final int IN_FLIGHT = Math.max(16, Runtime.getRuntime().availableProcessors() * 4);
+    public static final int PASS = 16;
+    private static final Set<String> HEAP_POOLS = heapPools();
 
     public record Progress(long done, long total, int row, int rows) {
         public float fraction() {
@@ -155,6 +167,40 @@ public final class VoxyPregen {
         SphereWorld.LOGGER.info(finished ? "Voxy pregeneration finished" : "Voxy pregeneration paused at row {}", current.completedRow + 1);
     }
 
+    private static Set<String> heapPools() {
+        Set<String> names = new HashSet<>();
+        try {
+            for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+                if (pool.getType() == MemoryType.HEAP) names.add(pool.getName());
+            }
+        } catch (LinkageError | RuntimeException ignored) {
+        }
+        return names;
+    }
+
+    private static double heapAfterGc() {
+        Runtime runtime = Runtime.getRuntime();
+        if (!HEAP_POOLS.isEmpty()) {
+            try {
+                long end = -1;
+                long used = 0;
+                for (var bean : ManagementFactory.getGarbageCollectorMXBeans()) {
+                    if (!(bean instanceof GarbageCollectorMXBean collector)) continue;
+                    GcInfo info = collector.getLastGcInfo();
+                    if (info == null || info.getEndTime() <= end) continue;
+                    end = info.getEndTime();
+                    used = 0;
+                    for (Map.Entry<String, MemoryUsage> pool : info.getMemoryUsageAfterGc().entrySet()) {
+                        if (HEAP_POOLS.contains(pool.getKey())) used += pool.getValue().getUsed();
+                    }
+                }
+                if (end >= 0) return (double) used / runtime.maxMemory();
+            } catch (LinkageError | RuntimeException ignored) {
+            }
+        }
+        return (double) (runtime.totalMemory() - runtime.freeMemory()) / runtime.maxMemory();
+    }
+
     private static final class Run {
         private final MinecraftServer server;
         private final ServerLevel level;
@@ -168,11 +214,15 @@ public final class VoxyPregen {
         private final List<Pending> pending = new ArrayList<>();
         private final @Nullable Method ingest;
         private int row;
+        private int passRow;
         private int completedRow;
         private long done;
         private long lastSave = System.currentTimeMillis();
         private long lastLog;
         private long lastGc;
+        private long lastHeapCheck;
+        private long heapFullSince;
+        private double heap;
         private @Nullable Method voxyInstance;
         private @Nullable Method ingestService;
         private @Nullable Method taskCount;
@@ -207,11 +257,18 @@ public final class VoxyPregen {
 
             int backlog = voxyBacklog();
             int loaded = level.getChunkSource().getLoadedChunksCount();
-            Runtime runtime = Runtime.getRuntime();
-            double heap = (double) (runtime.totalMemory() - runtime.freeMemory()) / runtime.maxMemory();
+            long now = System.currentTimeMillis();
+            if (now - lastHeapCheck >= 1000) {
+                lastHeapCheck = now;
+                heap = heapAfterGc();
+            }
             boolean throttled = backlog > MAX_VOXY_BACKLOG || loaded > maxLoaded || heap > MAX_HEAP;
-            if (heap > MAX_HEAP && System.currentTimeMillis() - lastGc > 10_000) {
-                lastGc = System.currentTimeMillis();
+            if (heap <= MAX_HEAP) {
+                heapFullSince = 0;
+            } else if (heapFullSince == 0) {
+                heapFullSince = now;
+            } else if (now - heapFullSince > 30_000 && now - lastGc > 30_000) {
+                lastGc = now;
                 System.gc();
             }
             if (System.currentTimeMillis() - lastLog > 10_000) {
@@ -223,7 +280,9 @@ public final class VoxyPregen {
             while (!throttled && pending.size() < IN_FLIGHT && System.nanoTime() < deadline) {
                 if (queue.isEmpty()) {
                     if (row >= rows) break;
-                    fillRow(row++);
+                    passRow = row;
+                    row = Math.min(rows, row + PASS);
+                    fillPass(passRow, row);
                     continue;
                 }
                 ChunkPos pos = queue.poll();
@@ -235,10 +294,10 @@ public final class VoxyPregen {
                     done++;
                     continue;
                 }
-                pending.add(new Pending(pos, row - 1, holder.getFullChunkFuture()));
+                pending.add(new Pending(pos, passRow, holder.getFullChunkFuture()));
             }
 
-            int lowestPending = queue.isEmpty() ? row : row - 1;
+            int lowestPending = queue.isEmpty() ? row : passRow;
             for (Pending p : pending) lowestPending = Math.min(lowestPending, p.row);
             completedRow = Math.max(completedRow, lowestPending - 1);
             progress = new Progress(done, (long) n * n, Math.max(0, completedRow + 1), rows);
@@ -285,12 +344,18 @@ public final class VoxyPregen {
             return true;
         }
 
-        private void fillRow(int r) {
-            int z = geometry.canonicalChunk(spawnZ + r);
-            queue.add(new ChunkPos(spawnX, z));
-            for (int d = 1; d <= n / 2; d++) {
-                queue.add(new ChunkPos(geometry.canonicalChunk(spawnX + d), z));
-                if (d < n / 2) queue.add(new ChunkPos(geometry.canonicalChunk(spawnX - d), z));
+        private void fillPass(int first, int last) {
+            List<Integer> tiles = new ArrayList<>();
+            for (int t = Math.floorDiv(-(n / 2), PASS); t <= Math.floorDiv(n - n / 2 - 1, PASS); t++) tiles.add(t);
+            tiles.sort(Comparator.comparingInt(t -> Math.abs(2 * t + 1)));
+            for (int tile : tiles) {
+                for (int r = first; r < last; r++) {
+                    int z = geometry.canonicalChunk(spawnZ + r);
+                    for (int c = 0; c < PASS; c++) {
+                        int dx = tile * PASS + c;
+                        if (dx >= -(n / 2) && dx < n - n / 2) queue.add(new ChunkPos(geometry.canonicalChunk(spawnX + dx), z));
+                    }
+                }
             }
         }
 

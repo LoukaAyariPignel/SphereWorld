@@ -403,11 +403,12 @@ public final class PlanetLoadingView {
                     int chunkZ = Math.floorDiv((int) Math.floor(((row + 0.5) / n - 0.5) * circumference), 16);
                     int band = Math.floorMod(chunkZ - spawnChunkZ, chunksRound);
                     if (band >= pregenRow) {
-                        double dim = band == pregenRow ? 0.55 + 0.25 * pulse : 0.35;
+                        boolean active = band < pregenRow + VoxyPregen.PASS;
+                        double dim = active ? 0.55 + 0.25 * pulse : 0.35;
                         double grey = (r + g + b) / 3.0;
                         r = (r * 0.3 + grey * 0.7) * dim;
                         g = (g * 0.3 + grey * 0.7) * dim;
-                        b = (b * 0.3 + grey * 0.7) * dim + (band == pregenRow ? 60 * pulse : 0);
+                        b = (b * 0.3 + grey * 0.7) * dim + (active ? 60 * pulse : 0);
                     }
                 }
 
