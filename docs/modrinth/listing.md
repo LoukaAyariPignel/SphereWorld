@@ -99,6 +99,28 @@ World generation update.
 - Smoother flight at high speed: with a large render distance, the game no longer rewrites every section of the view each time the camera crosses a section, only the new ones (about 14 times less work)
 ```
 
+## Version 0.1.3
+
+| Field | Value |
+|---|---|
+| File | `build/libs/sphereworld-0.1.3+mc26.3.jar` (not the `-sources.jar`) |
+| Version number | `0.1.3+mc26.3` |
+| Version name | SphereWorld 0.1.3 |
+| Release channel | Alpha |
+| Loaders | Fabric |
+| Game versions | 26.3 |
+| Dependencies | Fabric API: required. Sodium, Iris, Voxy: optional. |
+
+### Changelog
+
+```markdown
+Caves that reach the Nether.
+
+- New option in the planet's Customize screen: "Caves reach the Nether". The Overworld's own caves keep going below its floor and open into the Nether's ceiling, so you can walk from a deep cave down into the Nether
+- Only the shape of the caves changes: ores and structures are generated with the same rules, and the new passages never break into underground water or lava
+- Off by default; existing worlds are not affected
+```
+
 ## Gallery
 
 Files are in the game profile's `screenshots/gallery` folder, 1920×1080, HUD hidden. The first one is the
