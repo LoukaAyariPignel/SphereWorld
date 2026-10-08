@@ -16,6 +16,7 @@
     "GlobalSettingsUniformMixin",
     "LevelLoadingScreenMixin",
     "LevelRendererMixin",
+    "RotatingSectionStorageMixin",
     "ShaderIncludeMixin",
     "ShaderManagerMixin",
     "StackedGatewayBeamMixin",
