@@ -139,8 +139,8 @@ public final class PlanetMapScreen extends Screen {
         double dx = geometry.delta(shown.x, spawn.getX() + 0.5);
         double dz = geometry.delta(shown.z, spawn.getZ() + 0.5);
         Component around = Component.translatable("sphereworld.map.around",
-                String.format(Locale.ROOT, "%,d", geometry.circumference()),
-                String.format(Locale.ROOT, "%,d", Math.round(Math.sqrt(dx * dx + dz * dz))));
+                PlanetCustomizeScreen.grouped(geometry.circumference()),
+                PlanetCustomizeScreen.grouped(Math.round(Math.sqrt(dx * dx + dz * dz))));
         graphics.centeredText(font, around.copy().withStyle(ChatFormatting.GRAY), centreX, y + 11, 0xFFFFFFFF);
         graphics.centeredText(font, Component.translatable("sphereworld.map.hint", key.getTranslatedKeyMessage())
                 .withStyle(ChatFormatting.DARK_GRAY), centreX, y + 22, 0xFFFFFFFF);

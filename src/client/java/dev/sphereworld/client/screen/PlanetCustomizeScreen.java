@@ -64,7 +64,7 @@ public final class PlanetCustomizeScreen extends Screen {
     protected void init() {
         clearWidgets();
         CycleButton<Integer> sizeButton = CycleButton.<Integer>builder(
-                        value -> Component.translatable("sphereworld.customize.size.value", String.format(Locale.ROOT, "%,d", value)), size)
+                        value -> Component.translatable("sphereworld.customize.size.value", grouped(value)), size)
                 .withValues(PlanetLayout.OVERWORLD_SIZES)
                 .create(width / 2 - 110, 44, 220, 20, Component.translatable("sphereworld.customize.size"),
                         (button, value) -> size = value);
@@ -119,7 +119,7 @@ public final class PlanetCustomizeScreen extends Screen {
 
         int y = 72;
         long radius = Math.round(PlanetLayout.radius(size));
-        graphics.centeredText(font, Component.translatable("sphereworld.customize.info.radius", String.format(Locale.ROOT, "%,d", radius))
+        graphics.centeredText(font, Component.translatable("sphereworld.customize.info.radius", grouped(radius))
                 .withStyle(ChatFormatting.GRAY), centre, y, 0xFFFFFFFF);
         y += 11;
         graphics.centeredText(font, Component.translatable("sphereworld.customize.info.walk", duration(size / WALK_SPEED))
@@ -147,6 +147,12 @@ public final class PlanetCustomizeScreen extends Screen {
         }
         y += 8;
         graphics.centeredText(font, Component.translatable("sphereworld.customize.layers.hint").withStyle(ChatFormatting.GRAY), centre, y, 0xFFFFFFFF);
+    }
+
+    static String grouped(long value) {
+        String[] code = net.minecraft.client.Minecraft.getInstance().getLanguageManager().getSelected().split("_");
+        Locale locale = code.length == 2 ? Locale.of(code[0], code[1].toUpperCase(Locale.ROOT)) : Locale.ROOT;
+        return String.format(locale, "%,d", value).replace('\u202F', ' ').replace('\u00A0', ' ');
     }
 
     private static Component duration(double seconds) {
